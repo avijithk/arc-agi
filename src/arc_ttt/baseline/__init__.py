@@ -1,7 +1,5 @@
-"""Baseline: LoRA fine-tuning on serialized ARC training + synthetic tasks (Person A).
+"""Baseline (Person A): LoRA fine-tuning on serialized ARC training tasks.
 
-TODO
-- build (prompt, target) pairs with data.format_prompt over training tasks + augmentations
-- LoRA fine-tune (peft) a 0.5-1.5B model, config in configs/baseline.yaml
-- greedy decode on eval tasks -> text_to_grid -> metrics.summarize
+train.py     -> python -m arc_ttt.baseline.train --config configs/baseline.yaml
+evaluate.py  -> python -m arc_ttt.baseline.evaluate --adapter runs/baseline-0.5b/adapter --subset configs/dev_subset.txt --out-dir ...
 """

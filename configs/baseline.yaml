@@ -1,16 +1,24 @@
-model: Qwen/Qwen2.5-0.5B-Instruct   # placeholder; try 0.5B and 1.5B
+# Baseline: LoRA fine-tune on ARC-AGI-1 training tasks, evaluate on the eval split.
+model: Qwen/Qwen2.5-0.5B          # base (not instruct) model; swap for Qwen/Qwen2.5-1.5B later
+out_dir: runs/baseline-0.5b
+seed: 0
+
 lora:
   r: 32
   alpha: 64
   dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
 train:
-  lr: 1.0e-4
+  splits: [training]               # add more data dirs here later (e.g. synthetic re-arc tasks)
+  samples_per_task: 8              # random query + augmentation per sample, re-drawn every epoch
   epochs: 2
-  batch_size: 8
+  grad_accum: 16                   # batch size 1 x 16 = effective batch 16
+  lr: 2.0e-4
+  warmup_frac: 0.03
+  weight_decay: 0.0
+  max_grad_norm: 1.0
   max_seq_len: 8192
-  n_augmentations: 8
-eval:
-  split: evaluation
-  subset: configs/dev_subset.txt
-  attempts: 2
-seed: 0
+  gradient_checkpointing: true
+  log_every: 10
+  save_every: 50

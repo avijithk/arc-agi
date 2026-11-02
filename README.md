@@ -2,17 +2,23 @@
 
 10-417/617 (Intro to Deep Learning, Fall 2026) course project — CMU.
 
-ARC-AGI puzzles show a few input→output grid examples and ask the model to infer the rule and apply it to a new grid. Every evaluation puzzle uses an unseen rule. We fine-tune a small open-source LLM on serialized grids, add per-puzzle test-time training (TTT), and then study **adaptive** TTT: a held-out demo example decides how long each puzzle trains, and the final answer is picked by how consistently the model scores it across augmentations, not just by vote count.
+ARC-AGI puzzles show a few input→output grid examples and ask the model to infer the rule and apply it to a new grid. Every evaluation puzzle uses an unseen rule. We fine-tune a small LLM on serialized grids, add per-puzzle test-time training (TTT), and study **adaptive TTT budgets**: the model's performance on one of the puzzle's own examples decides how long each puzzle trains, so easy puzzles stop early.
+
+**Claim:** adaptive TTT matches fixed-budget TTT accuracy with less GPU time. Published TTT systems use a fixed budget per puzzle, even though the budget drives accuracy and dominates compute.
 
 ## Plan
 
 | Stage | What |
 |---|---|
-| Baseline | Grids → text, LoRA fine-tune a 0.5–1.5B LLM on ARC training + synthetic puzzles, predict directly |
-| TTT | Per puzzle: fresh LoRA adapter on its demos (+ rotations, flips, recolorings), vote across augmented predictions |
-| Ours | Adaptive TTT budget via held-out demo; augmentation-consistency scoring instead of plain voting |
+| Baseline | Grids → text, LoRA fine-tune Qwen2.5-0.5B on ARC training puzzles (+ augmentations), predict directly |
+| TTT | Per puzzle: fresh LoRA adapter on its demos (+ rotations, flips, recolorings), combine predictions across augmentations |
+| Ours (headline) | Adaptive per-puzzle TTT budget from the held-out / leave-one-out demo loss |
+| Component (prior work) | Product-of-experts scoring across augmentations ([Franzen et al., ICML 2025](https://arxiv.org/abs/2505.07859)), cited, not claimed |
+| Side result | Does held-out demo performance predict solving the puzzle? |
 
-**Evaluation:** official ARC score (exact match, 2 attempts) on the 400 public eval puzzles; 100-puzzle fixed dev subset while iterating. Also cell accuracy, size-match rate, ablations, accuracy vs. GPU-time, error analysis by puzzle type.
+**Evaluation:** official ARC score (exact match, 2 attempts) on the 400 public eval puzzles; fixed 100-puzzle dev subset (`configs/dev_subset.txt`) for iterating. Also cell accuracy, size match, accuracy vs. GPU-minutes per puzzle, ablations, error analysis by puzzle type.
+
+Full checkpoint-by-checkpoint plan, compute budget, risks and possible add-ons: [`docs/plan.md`](docs/plan.md).
 
 ## Repo layout
 
@@ -21,7 +27,8 @@ src/arc_ttt/      data loading, grid serialization, augmentations, metrics
   data.py         load ARC tasks, grid <-> text
   augment.py      D8 symmetries + color permutations (and their inverses)
   metrics.py      pass@2, cell accuracy, size match
-  baseline/       baseline LoRA fine-tuning          (Person A)
+  model_utils.py  model loading, prompt tokenization, greedy grid prediction
+  baseline/       train.py + evaluate.py              (Person A)
   ttt/            per-puzzle TTT, voting, adaptive    (Person B)
 configs/          experiment configs (YAML)
 scripts/          download data, run jobs
@@ -32,11 +39,33 @@ docs/             proposal and course requirements
 data/, checkpoints/   git-ignored
 ```
 
-## Setup
+## Running on AWS (g5.xlarge, A10G 24 GB; needs the Paid plan, the Free plan has no GPU instances)
+
+1. Launch a **g5.xlarge** with a **Deep Learning AMI (PyTorch, Ubuntu)**, 60 GB gp3 disk. Spot is about half price.
+2. SSH in, clone, set up (one time):
+   ```bash
+   git clone https://github.com/avijithk/arc-agi.git && cd arc-agi
+   bash scripts/setup_aws.sh          # installs deps, downloads ARC data, caches Qwen2.5-0.5B, runs tests
+   ```
+   GitHub will ask for a password: use a personal access token (Settings → Developer settings → Tokens).
+3. Run the baseline inside tmux so it survives disconnects:
+   ```bash
+   tmux new -s run
+   bash scripts/run_baseline.sh       # train, then eval on the 100-puzzle dev subset
+   # Ctrl-b d to detach; tmux attach -t run to come back
+   ```
+4. Results land in `runs/baseline-0.5b/`: `train_log.jsonl` (loss curve), `eval-dev/metrics.json`, `eval-dev/predictions.shard0.jsonl`.
+5. **Stop the instance** when the run finishes.
+
+If the instance dies (spot reclaim, crash), rerun the same command: training resumes from `runs/.../checkpoint`, evaluation skips finished puzzles. Copy results off before terminating an instance, e.g. `scp -r ubuntu@<ip>:arc-agi/runs/baseline-0.5b/eval-dev .`
+
+Useful flags: `--time-limit-hours H` on train/evaluate checkpoints and exits cleanly; `FULL=1 bash scripts/run_baseline.sh` also evaluates all 400 eval puzzles; `python -m arc_ttt.baseline.evaluate --limit 5 ...` for a quick check; `--max-steps N` on training for a short test run.
+
+## Local setup
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt && pip install -e .
 bash scripts/download_data.sh      # ARC-AGI-1 training + evaluation JSON into data/
 pytest -q
 ```

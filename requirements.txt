@@ -1,7 +1,7 @@
 numpy
 torch
-transformers
-peft
+transformers>=4.56
+peft>=0.17
 accelerate
 datasets
 pyyaml
