@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Data, models, logs
+data/*
+!data/README.md
+checkpoints/*
+!checkpoints/.gitkeep
+outputs/
+runs/
+wandb/
+*.safetensors
+*.bin
+*.pt
+*.ckpt
+slurm-*.out
+
+# LaTeX build
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
+.env
