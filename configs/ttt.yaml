@@ -1,0 +1,23 @@
+# Test-time training on top of the baseline. One run logs predictions at every
+# step in predict_at, so it gives the whole fixed-budget sweep at once.
+model: Qwen/Qwen2.5-0.5B
+baseline_adapter: runs/baseline-0.5b/adapter   # merged into the base model before TTT
+seed: 0
+
+lora:                      # the per-puzzle TTT adapter (reset for every puzzle)
+  r: 32
+  alpha: 64
+  dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+ttt:
+  lr: 1.0e-4               # constant (no schedule), so stopping early is a clean comparison
+  batch_size: 1
+  n_train_augs: 16         # augmentations of the leave-one-out examples
+  n_predict_augs: 8        # candidates per test input; also the PoE "experts"
+  predict_at: [0, 8, 16, 32, 64]   # step 0 = baseline + voting/PoE, no TTT
+  signal_every: 4
+  holdout: false           # true = hold one demo pair out (tasks with >= 3 pairs) for the stopping signal
+  poe: true
+  poe_max_candidates: 8
+  max_seq_len: 8192

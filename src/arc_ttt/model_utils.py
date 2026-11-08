@@ -119,3 +119,32 @@ def predict_grid(tok, model, demos: list[dict], test_input: Grid, aug: Augmentat
         "seconds": time.time() - t0,
         "n_demos": ex["n_demos"],
     }
+
+
+@torch.no_grad()
+def generate_batch(tok, model, prompts: list[list[int]], max_new_tokens: int = MAX_OUTPUT_TOKENS) -> list[str]:
+    """Greedy-decode several prompts at once (left-padded). Returns the generated text for each."""
+    if not prompts:
+        return []
+    L = max(len(p) for p in prompts)
+    ids = torch.full((len(prompts), L), tok.pad_token_id, dtype=torch.long)
+    mask = torch.zeros((len(prompts), L), dtype=torch.long)
+    for i, p in enumerate(prompts):
+        ids[i, L - len(p):] = torch.tensor(p)
+        mask[i, L - len(p):] = 1
+    out = model.generate(
+        ids.to(model.device), attention_mask=mask.to(model.device), max_new_tokens=max_new_tokens,
+        do_sample=False, eos_token_id=tok.eos_token_id, pad_token_id=tok.pad_token_id,
+    )
+    return [tok.decode(o[L:], skip_special_tokens=True) for o in out]
+
+
+@torch.no_grad()
+def target_logprob(model, prompt_ids: list[int], target_ids: list[int]) -> float:
+    """Sum of log p(target tokens | prompt) under the model."""
+    ids = torch.tensor([prompt_ids + target_ids], device=model.device)
+    n = len(target_ids)
+    logits = model(input_ids=ids, logits_to_keep=n + 1).logits[0, :-1].float()
+    lp = torch.log_softmax(logits, dim=-1)
+    tgt = torch.tensor(target_ids, device=model.device)
+    return lp.gather(1, tgt[:, None]).sum().item()

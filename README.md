@@ -29,7 +29,7 @@ src/arc_ttt/      data loading, grid serialization, augmentations, metrics
   metrics.py      pass@2, cell accuracy, size match
   model_utils.py  model loading, prompt tokenization, greedy grid prediction
   baseline/       train.py + evaluate.py              (Person A)
-  ttt/            per-puzzle TTT, voting, adaptive    (Person B)
+  ttt/            core.py, predict.py, run.py, analyze.py (Person B)
 configs/          experiment configs (YAML)
 scripts/          download data, run jobs
 notebooks/        exploration and figures
@@ -48,10 +48,10 @@ data/, checkpoints/   git-ignored
    bash scripts/setup_aws.sh          # installs deps, downloads ARC data, caches Qwen2.5-0.5B, runs tests
    ```
    GitHub will ask for a password: use a personal access token (Settings → Developer settings → Tokens).
-3. Run the baseline inside tmux so it survives disconnects:
+3. Run inside tmux so it survives disconnects:
    ```bash
    tmux new -s run
-   bash scripts/run_baseline.sh       # train, then eval on the 100-puzzle dev subset
+   bash scripts/run_midway.sh A       # or B on the other account; see "Midway runs" below
    # Ctrl-b d to detach; tmux attach -t run to come back
    ```
 4. Results land in `runs/baseline-0.5b/`: `train_log.jsonl` (loss curve), `eval-dev/metrics.json`, `eval-dev/predictions.shard0.jsonl`.
@@ -60,6 +60,31 @@ data/, checkpoints/   git-ignored
 If the instance dies (spot reclaim, crash), rerun the same command: training resumes from `runs/.../checkpoint`, evaluation skips finished puzzles. Copy results off before terminating an instance, e.g. `scp -r ubuntu@<ip>:arc-agi/runs/baseline-0.5b/eval-dev .`
 
 Useful flags: `--time-limit-hours H` on train/evaluate checkpoints and exits cleanly; `FULL=1 bash scripts/run_baseline.sh` also evaluates all 400 eval puzzles; `python -m arc_ttt.baseline.evaluate --limit 5 ...` for a quick check; `--max-steps N` on training for a short test run.
+
+## Test-time training
+
+```bash
+bash scripts/run_ttt.sh                  # dev subset, TTT on top of runs/baseline-0.5b/adapter
+FULL=1 bash scripts/run_ttt.sh           # all 400 eval puzzles
+HOLDOUT=1 bash scripts/run_ttt.sh        # hold one demo pair out to log the stopping signal
+```
+
+Each puzzle gets a fresh LoRA adapter trained on leave-one-out examples from its own demos (x16 augmentations), at a constant learning rate. Predictions (vote and product-of-experts top-2 over 8 augmentations) are logged at steps 0, 8, 16, 32, 64, and stopping signals every 4 steps. So **one run gives the whole fixed-budget sweep**, and adaptive stopping rules are evaluated offline from the logs:
+
+```bash
+python -m arc_ttt.ttt.analyze runs/ttt-0.5b/dev     # -> analysis/analysis.md, accuracy_vs_compute.png
+```
+
+Step 0 is the baseline with augmentation voting / PoE and no TTT.
+
+## Midway runs (two accounts in parallel)
+
+| Instance | Command | What it produces | Rough time (A10G) |
+|---|---|---|---|
+| A | `bash scripts/run_midway.sh A` | baseline: train, dev + all 400; then TTT sweep on the dev subset | ~5–7 h |
+| B | `bash scripts/run_midway.sh B` | baseline train, then TTT sweep on all 400 | ~10–14 h |
+
+Both train the same baseline (same seed), so nothing has to be copied between accounts. Times are estimates; check the per-puzzle seconds in the first log lines.
 
 ## Local setup
 
