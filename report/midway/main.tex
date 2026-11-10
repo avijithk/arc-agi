@@ -96,13 +96,15 @@ Adaptive: loss plateau $<5\%$, vote / PoE & 13.8 / 16.3\% & -- & -- & 34.3 / 39.
 \end{minipage}\hfill
 \begin{minipage}{0.49\linewidth}
 \centering
-\IfFileExists{figs/loss.png}{\includegraphics[width=\linewidth]{figs/loss.png}}{\fbox{\parbox{0.9\linewidth}{\centering\vspace{1.5cm}copy \texttt{loss.png} to \texttt{figs/}\vspace{1.5cm}}}}
+\IfFileExists{figs/loss.png}{\includegraphics[width=\linewidth,height=4.2cm,keepaspectratio]{figs/loss.png}}{\fbox{\parbox{0.9\linewidth}{\centering\vspace{1.5cm}copy \texttt{loss.png} to \texttt{figs/}\vspace{1.5cm}}}}
 \end{minipage}
 \caption{Left: accuracy vs.\ compute; fixed budgets are steps 0, 8, 16, 32, 64. Right: baseline training loss (0.49 $\rightarrow$ 0.25 over 400 steps).}
 \label{fig:curves}
 \end{figure}
 
 TTT raises the ARC score from 3.1\% (baseline) to 16.6\% (64 steps, PoE), a $5.3\times$ gain. PoE beats voting at every budget, by 1.1--3.1 points. The leave-one-out loss predicts which tasks are solved, increasingly so with training: AUC 0.58 at step 0, 0.71 at step 16, 0.76 at step 64.
+
+\textbf{Held-out signal (dev subset, 100 tasks).} When one demonstration is held out of TTT (tasks with $\geq 3$ pairs), accuracy peaks at 32 steps (17.5\% PoE) and falls by 64 steps (14.0\%), suggesting the adapter overfits the remaining demonstrations. At step 64 the held-out loss still predicts success (AUC 0.82), while the leave-one-out loss, which is a training loss, falls to 0.59. With only 8--17 solved tasks per checkpoint these estimates are noisy, but both point the same way: a fixed budget can be too long as well as too short.
 
 % ---------------------------------------------------------------------------
 \section{Evaluation of preliminary work}
@@ -114,12 +116,12 @@ TTT raises the ARC score from 3.1\% (baseline) to 16.6\% (64 steps, PoE), a $5.3
 % ---------------------------------------------------------------------------
 \section{Future work}
 
-We will make the whole pipeline adaptive and strengthen the base model. (1) \emph{Better stopping signals}: a truly held-out demonstration, and losses measured relative to each task's own starting value rather than absolute thresholds. (2) \emph{Adaptive inference}: generate candidates in small batches and stop once they agree, since prediction is half the cost; this is our main original component. (3) \emph{Stronger baseline}: fine-tune on procedurally generated training tasks (re-arc \cite{hodel2024rearc}) and test whether a stronger model needs fewer TTT steps, and compare Qwen2.5-1.5B. (4) Ablations (LoRA rank, attention vs.\ MLP adapters, augmentations) and a transfer check on ConceptARC. We will evaluate the final method by its accuracy--compute curve on all 400 tasks against fixed budgets, and confirm the savings in a real (not replayed) adaptive run.
+We will make the whole pipeline adaptive and strengthen the base model. (1) \emph{Better stopping signals}: classic early stopping on the held-out loss (stop when it stops improving), and losses measured relative to each task's own starting value rather than absolute thresholds. (2) \emph{Adaptive inference}: generate candidates in small batches and stop once they agree, since prediction is half the cost; this is our main original component. (3) \emph{Stronger baseline}: fine-tune on procedurally generated training tasks (re-arc \cite{hodel2024rearc}) and test whether a stronger model needs fewer TTT steps, and compare Qwen2.5-1.5B. (4) Ablations (LoRA rank, attention vs.\ MLP adapters, augmentations) and a transfer check on ConceptARC. We will evaluate the final method by its accuracy--compute curve on all 400 tasks against fixed budgets, and confirm the savings in a real (not replayed) adaptive run.
 
 % ---------------------------------------------------------------------------
 \section{Timeline and division of labor}
 
-\textbf{A} (\textcolor{red}{[name]}): data, baseline, re-arc pipeline, ablations, ConceptARC. \textbf{B} (\textcolor{red}{[name]}): TTT, adaptive inference, stopping rules, online adaptive run. \textbf{Nov 11--15}: build re-arc and adaptive inference; held-out signal run. \textbf{Nov 15--22}: re-arc TTT on all 400 tasks, adaptive inference, 1.5B, ablations, ConceptARC. \textbf{Nov 24}: Check-in 2. \textbf{Nov 25--28}: real adaptive run and reruns. \textbf{Nov 29--Dec 2}: final report. Compute: about 50 more GPU-hours on two AWS accounts.
+\textbf{A} (\textcolor{red}{[name]}): data, baseline, re-arc pipeline, ablations, ConceptARC. \textbf{B} (\textcolor{red}{[name]}): TTT, adaptive inference, stopping rules, online adaptive run. \textbf{Nov 11--15}: build re-arc, adaptive inference, constrained decoding. \textbf{Nov 15--22}: re-arc TTT on all 400 tasks, adaptive inference, 1.5B, ablations, ConceptARC. \textbf{Nov 24}: Check-in 2. \textbf{Nov 25--28}: real adaptive run and reruns. \textbf{Nov 29--Dec 2}: final report. Compute: about 60 more GPU-hours on two AWS accounts.
 
 \printbibliography
 

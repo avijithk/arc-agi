@@ -131,7 +131,20 @@ def adaptive_rules(recs):
             a, b = sig_at(r, prev["step"]).get("loo_loss"), sig_at(r, cp["step"]).get("loo_loss")
             return a is not None and b is not None and a > 0 and (a - b) / a < delta
         rules.append((f"loo_loss plateau (<{int(delta*100)}% drop)", plateau, signal_cost))
+    # Relative to each puzzle's own starting point: stop once the loss has fallen to a
+    # fraction of its step-0 value (absolute losses aren't comparable across puzzles).
+    def rel(key):
+        def f(r, cp, frac):
+            v0, v = sig_at(r, 0).get(key), sig_at(r, cp["step"]).get(key)
+            return v0 is not None and v is not None and v0 > 0 and v / v0 < frac
+        return f
+    for frac in (0.05, 0.1, 0.2, 0.35, 0.5):
+        rules.append((f"loo_loss < {frac:g} x its step-0 value",
+                      lambda r, p, cp, frac=frac: rel("loo_loss")(r, cp, frac), signal_cost))
     if has_ho:
+        for frac in (0.1, 0.25, 0.5):
+            rules.append((f"holdout_loss < {frac:g} x its step-0 value",
+                          lambda r, p, cp, frac=frac: rel("holdout_loss")(r, cp, frac), signal_cost))
         ho = sorted(s["holdout_loss"] for r in recs for s in r["signals"] if s.get("holdout_loss") is not None)
         for q in qs:
             if ho:
@@ -174,6 +187,63 @@ def md_table(rows, cols):
     return head + "".join("| " + " | ".join(fmt(r[c]) for c in cols) + " |\n" for r in rows)
 
 
+def fixed_score_at(fixed_rows, secs):
+    """ARC score of the fixed-budget curve at a given compute, linearly interpolated."""
+    pts = sorted((r["seconds_per_puzzle"], r["arc_score"]) for r in fixed_rows)
+    if secs <= pts[0][0]:
+        return pts[0][1]
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        if secs <= x1:
+            return y0 + (y1 - y0) * (secs - x0) / (x1 - x0) if x1 > x0 else y1
+    return pts[-1][1]
+
+
+def summary_text(n, fixed, adaptive, quality, has_holdout) -> str:
+    pct = lambda v: f"{100 * v:5.1f}%"
+    L = [f"TTT RESULTS - {n} puzzles", "=" * 60, "",
+         "1) Fixed budgets: ARC score (GPU seconds per puzzle)", "",
+         "   steps      vote              PoE"]
+    by = {(r["method"], r["budget"]): r for r in fixed}
+    for b in sorted({r["budget"] for r in fixed}):
+        v, q = by.get(("vote", b)), by.get(("poe", b))
+        L.append(f"   {b:>5}   {pct(v['arc_score'])} ({v['seconds_per_puzzle']:4.0f}s)   "
+                 f"{pct(q['arc_score'])} ({q['seconds_per_puzzle']:4.0f}s)")
+    L += ["", "2) Adaptive stopping vs. a fixed budget with the SAME compute",
+          "   (gain > 0 means the rule beats fixed budgets; best 5 per method)", ""]
+    for m in METHODS:
+        fr = [r for r in fixed if r["method"] == m]
+        top = max(fr, key=lambda r: r["budget"])
+        rows = []
+        for r in (x for x in adaptive if x["method"] == m):
+            gain = r["arc_score"] - fixed_score_at(fr, r["seconds_per_puzzle"])
+            rows.append((gain, r))
+        rows.sort(key=lambda t: -t[0])
+        L.append(f"   {m.upper()}  (max budget {top['budget']} steps: {pct(top['arc_score'])} at {top['seconds_per_puzzle']:.0f}s)")
+        for gain, r in rows[:5]:
+            L.append(f"     {pct(r['arc_score'])}  {100 * r['compute_vs_max_budget']:4.0f}% compute  "
+                     f"gain {100 * gain:+5.1f} pts   {r['rule']}")
+        L.append("")
+    L += ["3) Does the stopping signal predict which puzzles get solved?",
+          "   (AUC: 0.5 = no better than chance, 1.0 = perfect)", ""]
+    for q in quality:
+        L.append(f"   step {q['step']:>3}  {q['signal']:<13} AUC {q['auc']:.2f}   ({q['n_solved']} solved)")
+    best = []
+    for m in METHODS:
+        fr = [r for r in fixed if r["method"] == m]
+        cand = [(r["arc_score"] - fixed_score_at(fr, r["seconds_per_puzzle"]), r) for r in adaptive if r["method"] == m]
+        if cand:
+            best.append((m,) + max(cand, key=lambda t: t[0]))
+    noise = 4 / n  # ~4 puzzles; smaller differences are within run-to-run noise
+    L += ["", "4) Bottom line", f"   (1 puzzle = {100 / n:.2f} pts; gains under {100 * noise:.1f} pts count as a tie)", ""]
+    for m, gain, r in best:
+        verdict = "BEATS" if gain >= noise else ("roughly TIES" if gain > -noise else "does not beat")
+        L.append(f"   {m.upper()}: best rule {verdict} fixed budgets ({100 * gain:+.1f} pts at equal compute): "
+                 f"{r['rule']} -> {pct(r['arc_score']).strip()} using {100 * r['compute_vs_max_budget']:.0f}% of max compute")
+    if not has_holdout:
+        L.append("   (no held-out runs here; holdout rules need a HOLDOUT=1 run)")
+    return "\n".join(L) + "\n"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dirs", nargs="+")
@@ -181,7 +251,6 @@ def main():
     args = ap.parse_args()
     recs = load_runs(args.dirs)
     out = Path(args.out or Path(args.dirs[0]) / "analysis"); out.mkdir(parents=True, exist_ok=True)
-    print(f"{len(recs)} puzzles")
 
     fixed = [row for m in METHODS for row in fixed_budget_table(recs, m)]
     max_cost = {m: max(r["seconds_per_puzzle"] for r in fixed if r["method"] == m) for m in METHODS}
@@ -200,7 +269,10 @@ def main():
           "\n## Adaptive stopping (offline)\n", md_table(adaptive, ["method", "rule", "arc_score", "seconds_per_puzzle", "compute_vs_max_budget", "mean_stop_step"]),
           "\n## Does the signal predict success? (AUC, 0.5 = no)\n", md_table(quality, ["step", "signal", "auc", "n_solved", "n_unsolved"])]
     (out / "analysis.md").write_text("\n".join(md))
-    print("\n".join(md))
+    summ = summary_text(len(recs), fixed, adaptive, quality, any(r.get("holdout_index") is not None for r in recs))
+    (out / "summary.txt").write_text(summ)
+    print(summ)
+    print(f"full tables: {out / 'analysis.md'}")
 
     try:
         import matplotlib
