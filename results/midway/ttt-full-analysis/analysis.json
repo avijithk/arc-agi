@@ -1,0 +1,236 @@
+{
+  "n_puzzles": 400,
+  "fixed": [
+    {
+      "budget": 0,
+      "method": "vote",
+      "arc_score": 0.03125,
+      "cell_accuracy": 0.5204468825695578,
+      "size_match": 0.68,
+      "seconds_per_puzzle": 19.307425
+    },
+    {
+      "budget": 8,
+      "method": "vote",
+      "arc_score": 0.07375,
+      "cell_accuracy": 0.4964114509536849,
+      "size_match": 0.635,
+      "seconds_per_puzzle": 24.64525
+    },
+    {
+      "budget": 16,
+      "method": "vote",
+      "arc_score": 0.1,
+      "cell_accuracy": 0.4975415392389463,
+      "size_match": 0.62375,
+      "seconds_per_puzzle": 25.050175
+    },
+    {
+      "budget": 32,
+      "method": "vote",
+      "arc_score": 0.12375,
+      "cell_accuracy": 0.5576563298542948,
+      "size_match": 0.68125,
+      "seconds_per_puzzle": 27.98035
+    },
+    {
+      "budget": 64,
+      "method": "vote",
+      "arc_score": 0.13375,
+      "cell_accuracy": 0.5401493738315502,
+      "size_match": 0.655,
+      "seconds_per_puzzle": 37.0264
+    },
+    {
+      "budget": 0,
+      "method": "poe",
+      "arc_score": 0.045,
+      "cell_accuracy": 0.6020747640579696,
+      "size_match": 0.77875,
+      "seconds_per_puzzle": 23.664775
+    },
+    {
+      "budget": 8,
+      "method": "poe",
+      "arc_score": 0.08625,
+      "cell_accuracy": 0.555900900583502,
+      "size_match": 0.705,
+      "seconds_per_puzzle": 28.3563
+    },
+    {
+      "budget": 16,
+      "method": "poe",
+      "arc_score": 0.10875,
+      "cell_accuracy": 0.6112168140652061,
+      "size_match": 0.755,
+      "seconds_per_puzzle": 29.159325
+    },
+    {
+      "budget": 32,
+      "method": "poe",
+      "arc_score": 0.155,
+      "cell_accuracy": 0.6439234520942192,
+      "size_match": 0.77125,
+      "seconds_per_puzzle": 32.68925
+    },
+    {
+      "budget": 64,
+      "method": "poe",
+      "arc_score": 0.16625,
+      "cell_accuracy": 0.6584260689774116,
+      "size_match": 0.77875,
+      "seconds_per_puzzle": 42.134075
+    }
+  ],
+  "adaptive": [
+    {
+      "rule": "loo_loss < 0.00838 (q10)",
+      "method": "vote",
+      "arc_score": 0.12375,
+      "seconds_per_puzzle": 36.87973,
+      "compute_vs_max_budget": 0.9960387723354147,
+      "mean_stop_step": 59.46
+    },
+    {
+      "rule": "loo_loss < 0.00838 (q10)",
+      "method": "poe",
+      "arc_score": 0.16875,
+      "seconds_per_puzzle": 42.008955,
+      "compute_vs_max_budget": 0.9970304320196894,
+      "mean_stop_step": 59.46
+    },
+    {
+      "rule": "loo_loss < 0.0273 (q25)",
+      "method": "vote",
+      "arc_score": 0.12,
+      "seconds_per_puzzle": 34.9940375,
+      "compute_vs_max_budget": 0.9451104482207289,
+      "mean_stop_step": 53.14
+    },
+    {
+      "rule": "loo_loss < 0.0273 (q25)",
+      "method": "poe",
+      "arc_score": 0.1525,
+      "seconds_per_puzzle": 40.0506375,
+      "compute_vs_max_budget": 0.9505521955804179,
+      "mean_stop_step": 53.14
+    },
+    {
+      "rule": "loo_loss < 0.0685 (q50)",
+      "method": "vote",
+      "arc_score": 0.0775,
+      "seconds_per_puzzle": 29.921255,
+      "compute_vs_max_budget": 0.8081059730354557,
+      "mean_stop_step": 37.76
+    },
+    {
+      "rule": "loo_loss < 0.0685 (q50)",
+      "method": "poe",
+      "arc_score": 0.10625,
+      "seconds_per_puzzle": 34.530355,
+      "compute_vs_max_budget": 0.8195351387208571,
+      "mean_stop_step": 37.76
+    },
+    {
+      "rule": "loo_loss < 0.166 (q75)",
+      "method": "vote",
+      "arc_score": 0.07375,
+      "seconds_per_puzzle": 24.79651,
+      "compute_vs_max_budget": 0.6696981072964155,
+      "mean_stop_step": 19.12
+    },
+    {
+      "rule": "loo_loss < 0.166 (q75)",
+      "method": "poe",
+      "arc_score": 0.08125,
+      "seconds_per_puzzle": 29.13086,
+      "compute_vs_max_budget": 0.6913848233288614,
+      "mean_stop_step": 19.12
+    },
+    {
+      "rule": "loo_loss plateau (<2% drop)",
+      "method": "vote",
+      "arc_score": 0.135,
+      "seconds_per_puzzle": 35.1300075,
+      "compute_vs_max_budget": 0.9487826928893978,
+      "mean_stop_step": 49.68
+    },
+    {
+      "rule": "loo_loss plateau (<2% drop)",
+      "method": "poe",
+      "arc_score": 0.16125,
+      "seconds_per_puzzle": 40.0647825,
+      "compute_vs_max_budget": 0.9508879096076037,
+      "mean_stop_step": 49.68
+    },
+    {
+      "rule": "loo_loss plateau (<5% drop)",
+      "method": "vote",
+      "arc_score": 0.1375,
+      "seconds_per_puzzle": 34.254855,
+      "compute_vs_max_budget": 0.9251467871572715,
+      "mean_stop_step": 46.74
+    },
+    {
+      "rule": "loo_loss plateau (<5% drop)",
+      "method": "poe",
+      "arc_score": 0.1625,
+      "seconds_per_puzzle": 39.109505,
+      "compute_vs_max_budget": 0.9282155832304375,
+      "mean_stop_step": 46.74
+    },
+    {
+      "rule": "loo_loss plateau (<10% drop)",
+      "method": "vote",
+      "arc_score": 0.1275,
+      "seconds_per_puzzle": 32.4637975,
+      "compute_vs_max_budget": 0.8767743420910484,
+      "mean_stop_step": 40.4
+    },
+    {
+      "rule": "loo_loss plateau (<10% drop)",
+      "method": "poe",
+      "arc_score": 0.1475,
+      "seconds_per_puzzle": 37.1733975,
+      "compute_vs_max_budget": 0.8822644735881824,
+      "mean_stop_step": 40.4
+    }
+  ],
+  "signal_quality": [
+    {
+      "step": 0,
+      "signal": "loo_loss",
+      "auc": 0.580997813555953,
+      "n_solved": 13,
+      "n_unsolved": 387
+    },
+    {
+      "step": 8,
+      "signal": "loo_loss",
+      "auc": 0.6365066876475216,
+      "n_solved": 31,
+      "n_unsolved": 369
+    },
+    {
+      "step": 16,
+      "signal": "loo_loss",
+      "auc": 0.710102588491066,
+      "n_solved": 41,
+      "n_unsolved": 359
+    },
+    {
+      "step": 32,
+      "signal": "loo_loss",
+      "auc": 0.6896551724137931,
+      "n_solved": 52,
+      "n_unsolved": 348
+    },
+    {
+      "step": 64,
+      "signal": "loo_loss",
+      "auc": 0.7644795783926218,
+      "n_solved": 55,
+      "n_unsolved": 345
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "arc_score": 0.03125,
+  "cell_accuracy": 0.4547950129842536,
+  "size_match": 0.605,
+  "n_tasks": 400,
+  "total_seconds": 6042.3,
+  "adapter": "runs/baseline-0.5b/adapter"
+}
