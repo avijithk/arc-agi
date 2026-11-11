@@ -92,7 +92,8 @@ class TestTimeTrainer:
         ex = build_example(self.tok, demos, ho["input"], None, max_len)
         if ex is None:
             return False
-        text = generate_batch(self.tok, self.model, [ex["input_ids"]])[0]
+        text = generate_batch(self.tok, self.model, [ex["input_ids"]],
+                              constrained=self.cfg.get("constrained_decoding", False))[0]
         return text_to_grid(text) == ho["output"]
 
     def run_task(self, task: dict, seed: int) -> dict:
@@ -116,6 +117,8 @@ class TestTimeTrainer:
 
         self.reset()
         opt = torch.optim.AdamW(self.params, lr=c["lr"], weight_decay=0.0)
+        warm = c.get("warmup_steps", 0)
+        sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1.0, (s + 1) / warm) if warm else 1.0)
         scaler = torch.amp.GradScaler("cuda", enabled=self.amp is not None)
         bs = c.get("batch_size", 1)
 
@@ -137,7 +140,10 @@ class TestTimeTrainer:
                 self.model.eval()
                 t0 = time.time()
                 tests = [predict(tok, self.model, all_demos, t["input"], pred_augs, max_len,
-                                 poe=c.get("poe", True), max_candidates=c.get("poe_max_candidates", 8))
+                                 poe=c.get("poe", True), max_candidates=c.get("poe_max_candidates", 8),
+                                 constrained=c.get("constrained_decoding", False),
+                                 size_filter=c.get("size_filter", False),
+                                 adaptive=c.get("adaptive_infer"))
                          for t in task["test"]]
                 cp = {"step": step, "train_seconds": round(train_s, 2), "tests": tests,
                       "predict_seconds": round(time.time() - t0, 2)}
@@ -150,6 +156,7 @@ class TestTimeTrainer:
                 t0 = time.time()
                 batch = [samples[(step * bs + j) % len(samples)] for j in range(bs)]
                 losses.append(self._train_step(opt, scaler, batch))
+                sched.step()
                 train_s += time.time() - t0
 
         return {

@@ -109,6 +109,37 @@ def simulate(recs, method, fires, check_cost=None):
     return sum(scores) / len(scores), statistics.mean(costs), statistics.mean(stops)
 
 
+def simulate_early_stop(recs, method, key="holdout_loss", min_rel_improve=0.0):
+    """Classic early stopping on a validation signal, evaluated at the prediction checkpoints.
+
+    Keep the checkpoint with the lowest `key` seen so far; stop at the first checkpoint
+    where the signal fails to improve on that best by more than `min_rel_improve`, and
+    use the best checkpoint's predictions (in a live run: restore that adapter, predict once).
+    Cost = training time up to the stopping checkpoint + signal checks + one prediction.
+    Puzzles without the signal (e.g. < 3 demo pairs in holdout mode) use the full budget.
+    """
+    scores, costs, stops = [], [], []
+    for r in recs:
+        cps = r["checkpoints"]
+        vals = [sig_at(r, cp["step"]).get(key) for cp in cps]
+        if any(v is None for v in vals):
+            chosen, stop_cp = cps[-1], cps[-1]
+        else:
+            best_i, stop_i = 0, len(cps) - 1
+            for i in range(1, len(cps)):
+                if vals[i] < vals[best_i] * (1 - min_rel_improve):
+                    best_i = i
+                else:
+                    stop_i = i
+                    break
+            chosen, stop_cp = cps[best_i], cps[stop_i]
+        checks = sum(signal_cost(r, cp) for cp in cps if cp["step"] <= stop_cp["step"])
+        costs.append(stop_cp["train_seconds"] + fixed_cost(chosen, method) - chosen["train_seconds"] + checks)
+        scores.append(score(chosen, r["targets"], method))
+        stops.append(stop_cp["step"])
+    return sum(scores) / len(scores), statistics.mean(costs), statistics.mean(stops)
+
+
 def signal_cost(r, cp):
     return sum(s.get("signal_seconds", 0.0) for s in r["signals"] if s["step"] == cp["step"])
 
@@ -181,6 +212,83 @@ def signal_quality(recs, method="vote"):
     return rows
 
 
+def _test_cost(te, n_used, method):
+    """Inference seconds for one test input if only the first n_used augmentations are used.
+    Generation time is split evenly across augmentations within each logged batch; PoE time
+    scales with the number of augmentations scored."""
+    total = len(te["aug_cand"])
+    per_batch = te.get("batch_seconds") or [te.get("gen_seconds", 0.0)]
+    bsize = max(1, -(-total // len(per_batch)))
+    gen = sum(sec * min(bsize, max(0, n_used - i * bsize)) / bsize for i, sec in enumerate(per_batch))
+    poe = te.get("poe_seconds", 0.0) * n_used / total if method == "poe" else 0.0
+    return gen + poe
+
+
+def inference_replay(recs, step=None):
+    """Offline replay of inference settings at one checkpoint (default: the largest step).
+    Needs runs that logged every candidate (aug_cand). Returns rows for fixed numbers of
+    augmentations and for adaptive stopping on agreement, each with and without the size filter."""
+    from .predict import rank_from_log
+    usable = [r for r in recs if all("aug_cand" in te for cp in r["checkpoints"] for te in cp["tests"])]
+    if not usable:
+        return []
+    rows = []
+    max_aug = min(len(te["aug_cand"]) for r in usable for cp in r["checkpoints"] for te in cp["tests"])
+    settings = [("fixed", n, None) for n in (1, 2, 4, 8, 16, 32) if n <= max_aug]
+    settings += [("adaptive", b, k) for b in (2,) for k in (2, 3, 4)]
+    for filt in (False, True):
+        for kind, a, k in settings:
+            for m in METHODS:
+                sc, cost, used = [], [], []
+                for r in usable:
+                    cp = cp_at(r, step if step is not None else max(c["step"] for c in r["checkpoints"]))
+                    vals, csts, us = [], [], []
+                    for te, t in zip(cp["tests"], r["targets"]):
+                        n = len(te["aug_cand"])
+                        if kind == "fixed":
+                            n_used = a
+                        else:
+                            n_used = n
+                            for end in range(a, n + a, a):
+                                cnt = {}
+                                ok = te.get("size_ok") or []
+                                for i in te["aug_cand"][:min(end, n)]:
+                                    if i >= 0 and (not filt or not ok or ok[i] or not any(ok)):
+                                        cnt[i] = cnt.get(i, 0) + 1
+                                if cnt and max(cnt.values()) >= k:
+                                    n_used = min(end, n)
+                                    break
+                        vote, poe = rank_from_log(te, n_used, size_filter=filt)
+                        guesses = vote if m == "vote" else poe
+                        vals.append(float(any(g == t for g in guesses)))
+                        csts.append(_test_cost(te, n_used, m))
+                        us.append(n_used)
+                    sc.append(sum(vals) / len(vals)); cost.append(sum(csts)); used.append(sum(us) / len(us))
+                name = f"{a} augs" if kind == "fixed" else f"batches of {a}, stop at {k} agreeing"
+                rows.append({"setting": name, "size_filter": filt, "method": m, "arc_score": sum(sc) / len(sc),
+                             "infer_seconds": statistics.mean(cost), "mean_augs": statistics.mean(used)})
+    return rows
+
+
+def inference_text(rows) -> str:
+    if not rows:
+        return ""
+    pct = lambda v: f"{100 * v:5.1f}%"
+    L = ["", "5) Inference: how many candidates, and does the size filter help?",
+         "   (replayed offline at the last checkpoint; seconds = inference only, per puzzle)", ""]
+    for m in METHODS:
+        L.append(f"   {m.upper()}")
+        L.append("     setting                               no filter            size filter")
+        names = list(dict.fromkeys(r["setting"] for r in rows))
+        for nm in names:
+            a = next(r for r in rows if r["setting"] == nm and r["method"] == m and not r["size_filter"])
+            b = next(r for r in rows if r["setting"] == nm and r["method"] == m and r["size_filter"])
+            L.append(f"     {nm:<36}  {pct(a['arc_score'])} {a['infer_seconds']:5.1f}s   {pct(b['arc_score'])} {b['infer_seconds']:5.1f}s"
+                     f"   ({a['mean_augs']:.1f} augs)")
+        L.append("")
+    return "\n".join(L) + "\n"
+
+
 def md_table(rows, cols):
     head = "| " + " | ".join(cols) + " |\n|" + "---|" * len(cols) + "\n"
     fmt = lambda v: f"{v:.3f}" if isinstance(v, float) else str(v)
@@ -188,8 +296,13 @@ def md_table(rows, cols):
 
 
 def fixed_score_at(fixed_rows, secs):
-    """ARC score of the fixed-budget curve at a given compute, linearly interpolated."""
-    pts = sorted((r["seconds_per_puzzle"], r["arc_score"]) for r in fixed_rows)
+    """Best ARC score a fixed budget reaches within this compute (upper envelope of the
+    fixed-budget curve, linearly interpolated). If a smaller budget scores higher, that
+    is what a fixed-budget user would pick, so it's the fair comparison."""
+    pts, best = [], -1.0
+    for x, y in sorted((r["seconds_per_puzzle"], r["arc_score"]) for r in fixed_rows):
+        best = max(best, y)
+        pts.append((x, best))
     if secs <= pts[0][0]:
         return pts[0][1]
     for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
@@ -248,8 +361,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dirs", nargs="+")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--adaptive-infer", action="store_true", help="(kept for old commands; replay now runs automatically)")
+    ap.add_argument("--subset", default=None, help="only analyze task ids in this file, e.g. configs/dev_subset.txt")
     args = ap.parse_args()
     recs = load_runs(args.dirs)
+    if args.subset:
+        keep = set(Path(args.subset).read_text().split())
+        recs = [r for r in recs if r["task"] in keep]
     out = Path(args.out or Path(args.dirs[0]) / "analysis"); out.mkdir(parents=True, exist_ok=True)
 
     fixed = [row for m in METHODS for row in fixed_budget_table(recs, m)]
@@ -260,16 +378,29 @@ def main():
             sc, secs, stop = simulate(recs, m, fires, cost)
             adaptive.append({"rule": name, "method": m, "arc_score": sc, "seconds_per_puzzle": secs,
                              "compute_vs_max_budget": secs / max_cost[m], "mean_stop_step": stop})
+    has_ho = any(r.get("holdout_index") is not None for r in recs)
+    for key in (["holdout_loss"] if has_ho else []) + ["loo_loss"]:
+        for tol in (0.0, 0.05, 0.15):
+            for m in METHODS:
+                sc, secs, stop = simulate_early_stop(recs, m, key, tol)
+                adaptive.append({"rule": f"early stop on {key} (needs >{int(tol*100)}% improvement)", "method": m,
+                                 "arc_score": sc, "seconds_per_puzzle": secs,
+                                 "compute_vs_max_budget": secs / max_cost[m], "mean_stop_step": stop})
     quality = signal_quality(recs)
 
-    json.dump({"n_puzzles": len(recs), "fixed": fixed, "adaptive": adaptive, "signal_quality": quality},
-              open(out / "analysis.json", "w"), indent=2)
+    json.dump({"n_puzzles": len(recs), "fixed": fixed, "adaptive": adaptive, "signal_quality": quality,
+               "inference": inference_replay(recs)}, open(out / "analysis.json", "w"), indent=2)
     md = [f"# TTT analysis ({len(recs)} puzzles)\n",
           "## Fixed budgets\n", md_table(fixed, ["method", "budget", "arc_score", "cell_accuracy", "size_match", "seconds_per_puzzle"]),
           "\n## Adaptive stopping (offline)\n", md_table(adaptive, ["method", "rule", "arc_score", "seconds_per_puzzle", "compute_vs_max_budget", "mean_stop_step"]),
           "\n## Does the signal predict success? (AUC, 0.5 = no)\n", md_table(quality, ["step", "signal", "auc", "n_solved", "n_unsolved"])]
     (out / "analysis.md").write_text("\n".join(md))
+    infer = inference_replay(recs)
     summ = summary_text(len(recs), fixed, adaptive, quality, any(r.get("holdout_index") is not None for r in recs))
+    summ += inference_text(infer)
+    if infer:
+        md.append("\n## Inference replay\n" + md_table(infer, ["method", "setting", "size_filter", "arc_score", "infer_seconds", "mean_augs"]))
+        (out / "analysis.md").write_text("\n".join(md))
     (out / "summary.txt").write_text(summ)
     print(summ)
     print(f"full tables: {out / 'analysis.md'}")

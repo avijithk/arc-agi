@@ -50,6 +50,7 @@ def main():
     ap.add_argument("--shard", type=int, default=0)
     ap.add_argument("--num-shards", type=int, default=1)
     ap.add_argument("--time-limit-hours", type=float, default=None, help="stop before this long; rerun to resume")
+    ap.add_argument("--constrained", action="store_true", help="decode only well-formed grids")
     args = ap.parse_args()
 
     cfg = yaml.safe_load(open(args.config))
@@ -82,11 +83,11 @@ def main():
         t0 = time.time()
         attempts, gen_seconds = [], 0.0
         for test in task["test"]:
-            first = predict_grid(tok, model, task["train"], test["input"], Augmentation(), max_len)
+            first = predict_grid(tok, model, task["train"], test["input"], Augmentation(), max_len, args.constrained)
             guesses = [first["grid"]]
             gen_seconds += first["seconds"]
             for k in SECOND_ATTEMPT_ORDER:
-                second = predict_grid(tok, model, task["train"], test["input"], Augmentation(d8=k), max_len)
+                second = predict_grid(tok, model, task["train"], test["input"], Augmentation(d8=k), max_len, args.constrained)
                 gen_seconds += second["seconds"]
                 if second["grid"] != first["grid"] or first["grid"] is None:
                     break

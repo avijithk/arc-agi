@@ -57,6 +57,9 @@ def main():
     if adapter and adapter != "none":
         model = PeftModel.from_pretrained(model, adapter).merge_and_unload()
         print(f"merged baseline adapter {adapter}")
+    if cfg.get("warmstart_adapter"):
+        model = PeftModel.from_pretrained(model, cfg["warmstart_adapter"]).merge_and_unload()
+        print(f"merged warm-start adapter {cfg['warmstart_adapter']}")
     lc = cfg["lora"]
     model = get_peft_model(model, LoraConfig(r=lc["r"], lora_alpha=lc["alpha"], lora_dropout=lc["dropout"],
                                              target_modules=lc["target_modules"], task_type="CAUSAL_LM"))

@@ -1,0 +1,33 @@
+# R4: logs 16 candidates per test input; analyze replays every stop-on-agreement setting offline. For a live adaptive run set adaptive_infer: {batch: 2, min_votes: 3}
+# Generated from configs/ttt.yaml; edit that file's defaults, not this comment.
+model: Qwen/Qwen2.5-0.5B
+baseline_adapter: runs/baseline-0.5b/adapter
+seed: 0
+lora:
+  r: 32
+  alpha: 64
+  dropout: 0.0
+  target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+ttt:
+  lr: 0.0001
+  batch_size: 1
+  n_train_augs: 16
+  n_predict_augs: 16
+  predict_at:
+  - 0
+  - 32
+  - 64
+  signal_every: 4
+  holdout: false
+  poe: true
+  poe_max_candidates: 8
+  max_seq_len: 8192
+  constrained_decoding: true
+  size_filter: true

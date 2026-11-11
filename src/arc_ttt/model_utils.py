@@ -95,23 +95,15 @@ def build_example(tok, demos: list[dict], query_in: Grid, query_out: Grid | None
 
 
 @torch.no_grad()
-def predict_grid(tok, model, demos: list[dict], test_input: Grid, aug: Augmentation, max_len: int) -> dict:
+def predict_grid(tok, model, demos: list[dict], test_input: Grid, aug: Augmentation, max_len: int,
+                 constrained: bool = False) -> dict:
     """Greedy-decode an output grid under one augmentation, mapped back to the original frame."""
     a_demos = [{"input": aug.apply(d["input"]), "output": aug.apply(d["output"])} for d in demos]
     ex = build_example(tok, a_demos, aug.apply(test_input), None, max_len)
     if ex is None:
         return {"grid": None, "text": "", "seconds": 0.0, "skipped": "too_long"}
-    ids = torch.tensor([ex["input_ids"]], device=model.device)
     t0 = time.time()
-    out = model.generate(
-        ids,
-        attention_mask=torch.ones_like(ids),
-        max_new_tokens=MAX_OUTPUT_TOKENS,
-        do_sample=False,
-        eos_token_id=tok.eos_token_id,
-        pad_token_id=tok.pad_token_id,
-    )
-    text = tok.decode(out[0, ids.shape[1]:], skip_special_tokens=True)
+    text = generate_batch(tok, model, [ex["input_ids"]], constrained=constrained)[0]
     grid = text_to_grid(text)
     return {
         "grid": aug.invert(grid) if grid is not None else None,
@@ -121,9 +113,57 @@ def predict_grid(tok, model, demos: list[dict], test_input: Grid, aug: Augmentat
     }
 
 
+class GridConstraint:
+    """Logits processor that only allows well-formed grids.
+
+    Allowed tokens: the 10 digits, newline, and end-of-sequence. The first row may be
+    1-30 cells long; every later row must match it exactly; at most 30 rows. A row can
+    only end (newline or EOS) when it is full, so every output parses as a grid.
+    Requires a tokenizer where each digit and the newline are single tokens.
+    """
+
+    def __init__(self, tok, prompt_len: int, max_side: int = 30):
+        ids = [tok(str(d), add_special_tokens=False)["input_ids"] for d in range(10)]
+        nl = tok("\n", add_special_tokens=False)["input_ids"]
+        if any(len(i) != 1 for i in ids) or len(nl) != 1:
+            raise ValueError("tokenizer does not encode digits/newline as single tokens")
+        self.digits = [i[0] for i in ids]
+        self.nl, self.eos = nl[0], tok.eos_token_id
+        self.pad = tok.pad_token_id if tok.pad_token_id is not None else tok.eos_token_id
+        self.prompt_len, self.max_side = prompt_len, max_side
+
+    def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
+        mask = torch.full_like(scores, float("-inf"))
+        for b in range(input_ids.shape[0]):
+            gen = input_ids[b, self.prompt_len:].tolist()
+            if gen and gen[-1] in (self.eos, self.pad):   # finished: keep emitting EOS (padding)
+                mask[b, self.eos] = 0.0
+                continue
+            width, rows, cur = None, 0, 0
+            for t in gen:
+                if t == self.nl:
+                    width = cur if width is None else width
+                    rows += 1
+                    cur = 0
+                else:
+                    cur += 1
+            limit = width if width is not None else self.max_side
+            if cur < limit:
+                mask[b, self.digits] = 0.0
+            if cur > 0 and (width is None or cur == width):
+                mask[b, self.eos] = 0.0
+                if rows + 1 < self.max_side:
+                    mask[b, self.nl] = 0.0
+        return scores + mask
+
+
 @torch.no_grad()
-def generate_batch(tok, model, prompts: list[list[int]], max_new_tokens: int = MAX_OUTPUT_TOKENS) -> list[str]:
-    """Greedy-decode several prompts at once (left-padded). Returns the generated text for each."""
+def generate_batch(tok, model, prompts: list[list[int]], max_new_tokens: int = MAX_OUTPUT_TOKENS,
+                   constrained: bool = False) -> list[str]:
+    """Greedy-decode several prompts at once (left-padded). Returns the generated text for each.
+
+    constrained=True restricts decoding to well-formed grids (see GridConstraint).
+    """
     if not prompts:
         return []
     L = max(len(p) for p in prompts)
@@ -132,9 +172,13 @@ def generate_batch(tok, model, prompts: list[list[int]], max_new_tokens: int = M
     for i, p in enumerate(prompts):
         ids[i, L - len(p):] = torch.tensor(p)
         mask[i, L - len(p):] = 1
+    extra = {}
+    if constrained:
+        from transformers import LogitsProcessorList
+        extra["logits_processor"] = LogitsProcessorList([GridConstraint(tok, L)])
     out = model.generate(
         ids.to(model.device), attention_mask=mask.to(model.device), max_new_tokens=max_new_tokens,
-        do_sample=False, eos_token_id=tok.eos_token_id, pad_token_id=tok.pad_token_id,
+        do_sample=False, eos_token_id=tok.eos_token_id, pad_token_id=tok.pad_token_id, **extra,
     )
     return [tok.decode(o[L:], skip_special_tokens=True) for o in out]
 

@@ -77,6 +77,21 @@ python -m arc_ttt.ttt.analyze runs/ttt-0.5b/dev     # -> analysis/analysis.md, a
 
 Step 0 is the baseline with augmentation voting / PoE and no TTT.
 
+## Block 1 additions (Nov 11)
+
+| Feature | How to use it |
+|---|---|
+| Constrained decoding (only well-formed grids) | `constrained_decoding: true` in a TTT config; `--constrained` on `arc_ttt.baseline.evaluate` |
+| Size filter (drop candidates whose size breaks the demos' pattern) | `size_filter: true`; verdicts are always logged, so analyze replays it on/off |
+| Full candidate logging + PoE log-probs per augmentation | automatic in every TTT run |
+| Adaptive inference | log many candidates (`configs/ttt_adaptive_infer.yaml`), analyze replays stop-on-agreement settings; live mode `adaptive_infer: {batch: 2, min_votes: 3}` |
+| TTT learning-rate warmup | `warmup_steps: 4` |
+| re-arc data | `bash scripts/download_rearc.sh && python -m arc_ttt.data_gen.rearc --per-task 100`; train with `configs/baseline_rearc.yaml` |
+| Shared warm-start on eval demos | `python -m arc_ttt.ttt.warmstart --out runs/warmstart-0.5b/dev --subset configs/dev_subset.txt`; then `configs/ttt_warmstart.yaml` |
+| Run configs | `configs/ttt_{constrained,warmstart,rearc,adaptive_infer,long,lr3e-4,warmup,lr3e-4_warmup,1.5b}.yaml`, `configs/baseline_{rearc,1.5b}.yaml`, `configs/ablations/*.yaml` |
+| Ablations | `bash scripts/run_ablations.sh` |
+| Analysis on a subset of a run | `python -m arc_ttt.ttt.analyze runs/ttt-0.5b/full --subset configs/dev_subset.txt` |
+
 ## Midway runs (two accounts in parallel)
 
 | Instance | Command | What it produces | Rough time (A10G) |
