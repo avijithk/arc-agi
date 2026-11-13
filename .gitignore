@@ -39,3 +39,7 @@ slurm-*.out
 .vscode/
 .idea/
 .env
+
+# Secrets
+*.pem
+.env

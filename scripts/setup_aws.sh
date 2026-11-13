@@ -10,6 +10,11 @@ nvidia-smi --query-gpu=name,memory.total --format=csv
 if [ -f /opt/pytorch/bin/activate ]; then source /opt/pytorch/bin/activate; fi
 python -c "import torch; assert torch.cuda.is_available(); print('torch', torch.__version__, 'bf16:', torch.cuda.is_bf16_supported())"
 
+# The AMI ships NVIDIA Transformer Engine, which peft imports if present; that build can be
+# broken against the image's CUDA (undefined cublasLt symbol). We don't use it, so remove it.
+TE=$(pip list --format=freeze 2>/dev/null | grep -i '^transformer.engine' | cut -d= -f1 || true)
+if [ -n "$TE" ]; then pip uninstall -y $TE; fi
+
 pip install -q "transformers>=4.56" "peft>=0.17" accelerate pyyaml tqdm matplotlib pytest
 pip install -q -e .
 
