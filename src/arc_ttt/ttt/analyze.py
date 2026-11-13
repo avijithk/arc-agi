@@ -357,6 +357,24 @@ def summary_text(n, fixed, adaptive, quality, has_holdout) -> str:
     return "\n".join(L) + "\n"
 
 
+def live_summary(recs) -> str:
+    """Summary for a live adaptive run (one prediction per puzzle, at the stopping step)."""
+    n = len(recs)
+    rules = sorted({r["stop_rule"] for r in recs})
+    L = [f"LIVE ADAPTIVE RUN - {n} puzzles, stop rule {', '.join(rules)}", "=" * 60, ""]
+    for m in METHODS:
+        sc = sum(score(r["checkpoints"][-1], r["targets"], m) for r in recs) / n
+        L.append(f"   {m.upper():<5} ARC score {100 * sc:5.1f}%")
+    secs = [r["seconds"] for r in recs if "seconds" in r]
+    L += ["", f"   GPU time per puzzle (measured, everything included): {statistics.mean(secs):.1f} s",
+          f"   total GPU time: {sum(secs) / 3600:.2f} h",
+          f"   mean stopping step {statistics.mean(r['stopped_at'] for r in recs):.1f}; "
+          f"mean step predicted from {statistics.mean(r['predicted_at'] for r in recs):.1f}",
+          "", "   Compare with a fixed-budget run's analysis at the same settings (seconds_per_puzzle there",
+          "   counts training + one prediction, which is what this run spends)."]
+    return "\n".join(L) + "\n"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dirs", nargs="+")
@@ -369,6 +387,11 @@ def main():
         keep = set(Path(args.subset).read_text().split())
         recs = [r for r in recs if r["task"] in keep]
     out = Path(args.out or Path(args.dirs[0]) / "analysis"); out.mkdir(parents=True, exist_ok=True)
+    if recs and all(r.get("stop_rule") for r in recs):
+        txt = live_summary(recs)
+        (out / "summary.txt").write_text(txt)
+        print(txt)
+        return
 
     fixed = [row for m in METHODS for row in fixed_budget_table(recs, m)]
     max_cost = {m: max(r["seconds_per_puzzle"] for r in fixed if r["method"] == m) for m in METHODS}

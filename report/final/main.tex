@@ -1,0 +1,146 @@
+\documentclass{article}
+
+% Final report: <= 8 pages excluding references, appendix and contribution statement.
+% Needs neurips_2026.sty next to this file (Overleaf "Formatting Instructions for NeurIPS 2026").
+\usepackage[preprint,nonatbib]{neurips_2026}
+\makeatletter\renewcommand{\@noticestring}{}\makeatother   % remove "Preprint" footer; delete if it errors
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts,amsmath}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+\usepackage[style=alphabetic,maxbibnames=99]{biblatex}
+\addbibresource{references.bib}
+
+% Placeholders: everything in \todo{} must be filled before submitting. Search for "todo".
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+
+\title{Where Should Test-Time Compute Go?\\Adaptive Training and Inference Budgets for ARC-AGI}
+
+\author{%
+  Avi Karthikeyan \\ \texttt{avijithk@andrew.cmu.edu} \And
+  \textcolor{red}{[Partner name]} \\ \texttt{\textcolor{red}{[andrewid]}@andrew.cmu.edu}
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Test-time training (TTT), fine-tuning a small adapter on each task's own demonstrations before answering, is the strongest known recipe for language models on the Abstraction and Reasoning Corpus (ARC-AGI-1), but it spends the same compute on every task. We study where per-task compute should go. With Qwen2.5-0.5B and LoRA, TTT with product-of-experts selection lifts the ARC score on the 400 public evaluation tasks from 3.1\% to 16.6\%. Stopping rules for the training budget, built on leave-one-out and held-out losses, appear to help when chosen on the evaluation tasks (+1.2 points) but the gain vanishes when they are chosen and scored on disjoint halves ($+0.1 \pm 1.4$ points); a learned per-task budget predictor likewise only ties fixed budgets. Because one prediction costs about as much as 64 training steps, we turn to \todo{adaptive inference result}. \todo{re-arc / constrained decoding / warm-start headline numbers}.
+\end{abstract}
+
+% ===========================================================================
+\section{Introduction}
+
+The Abstraction and Reasoning Corpus (ARC-AGI-1) \cite{chollet2019measure} tests few-shot rule induction: each task gives 2--10 demonstration pairs of colored grids (up to $30\times30$, 10 colors) and asks for the output of a new input grid. Every evaluation task uses a rule unseen in training, so memorization does not help; ARC directly probes how deep models generalize from a handful of examples.
+
+The strongest open approaches \cite{akyurek2024surprising,franzen2025product} adapt a language model to \emph{each task} with test-time training (TTT) and pick answers by scoring candidates across augmented views of the task. These methods spend a fixed budget on every task, although that budget strongly affects accuracy and dominates total compute \cite{deliege2026trainingbudgets}. We ask a simple question: \emph{can per-task compute be spent where it helps?}
+
+\textbf{Contributions.}
+(1) A complete, reproducible TTT pipeline for a 0.5B model that logs every candidate and checkpoint, so any stopping or selection policy can be replayed offline at zero GPU cost.
+(2) A careful negative result: stopping rules for the TTT \emph{training} budget, including relative-loss, plateau, held-out early stopping and a learned budget predictor, do not beat fixed budgets once rule selection is cross-validated; we show why (inference dominates per-task cost, and training losses stop being informative as the adapter fits the demonstrations).
+(3) \todo{Adaptive inference: candidates generated in small batches until they agree; result.}
+(4) \todo{Cheap accuracy gains: constrained grid decoding, size filtering, a shared warm-start on the evaluation demonstrations, and procedurally generated training data (re-arc) --- results.}
+
+% ===========================================================================
+\section{Related work}
+
+\textbf{ARC.} \textcite{chollet2019measure} defines intelligence as skill-acquisition efficiency and introduces ARC, with tasks built on core-knowledge priors and held-out evaluation rules. ConceptARC \cite{moskvichev2023conceptarc} groups ARC-style tasks by concept (e.g.\ inside/outside, counting) to test whether solvers generalize a concept rather than a single task; we use it as a transfer check.
+
+\textbf{Test-time training.} \textcite{akyurek2024surprising} build leave-one-out training examples from each task's demonstrations, expand them with invertible augmentations, and fine-tune a LoRA adapter \cite{hu2021lora} per task, reaching up to $6\times$ the accuracy of the fine-tuned model alone and 53\% on the public validation set with an 8B model. \textcite{franzen2025product} reach 71.6\% on the public evaluation set at about 2 cents per task; their \emph{product of experts} (PoE) re-scores each candidate by its probability under several augmented views and multiplies them. \textcite{deliege2026trainingbudgets} show in a controlled study that the per-task TTT budget strongly affects accuracy while dominating compute. All of these spend the same budget on every task.
+
+\textbf{Training data.} re-arc \cite{hodel2024rearc} provides procedural generators, and 1000 verified examples each, for the 400 ARC-AGI-1 training tasks, which we use to strengthen the base model without touching evaluation tasks.
+
+\todo{Optional: one sentence on adaptive computation / early stopping in general, if space.}
+
+% ===========================================================================
+\section{Methods}
+
+\subsection{Data, serialization and augmentation}
+A grid becomes digit rows (one digit per cell, one line per row); a prompt lists the demonstrations as \texttt{Input:} and \texttt{Output:} blocks and ends with the test input. Qwen's tokenizer splits digits individually, so a $30\times30$ grid costs about 930 tokens; 99\% of prompts fit in 8,192 tokens, and longer ones drop demonstrations from the front. Augmentations are the 8 dihedral symmetries combined with random permutations of colors 1--9 (background fixed); all are invertible.
+
+\subsection{Baseline}
+We fine-tune Qwen2.5-0.5B \cite{qwen2024qwen25} with LoRA (rank 32, $\alpha=64$, all attention and MLP projections; 17.6M trainable parameters) on the 400 training tasks: each sample uses one pair as the query and the others as demonstrations, under a random augmentation; loss is computed only on the output grid. 2 epochs, effective batch 16, AdamW at $2\times10^{-4}$, cosine decay; 34 minutes on one A10G. \todo{re-arc variant: data size, epochs, time.}
+
+\subsection{Test-time training}
+Each evaluation task gets a fresh rank-32 adapter on top of the baseline, trained on leave-one-out examples of its demonstrations under 16 augmentations, at a constant learning rate of $10^{-4}$ (batch 1) for up to 64 steps. We log predictions at steps $\{0,8,16,32,64\}$ and the mean leave-one-out loss every 4 steps. \todo{Warm-start: one shared fine-tune on all evaluation tasks' demonstrations (never test outputs) before per-task TTT; result-dependent.}
+
+\subsection{Candidate generation and selection}
+Each prediction greedily decodes one candidate under each of 8 augmentations. \todo{Constrained decoding}: a logits mask allows only digits, newline and end-of-sequence, and forces every row to the first row's width, so every output is a valid grid. A \emph{size filter} infers how output size depends on input size from the demonstrations (same, constant, or integer scale) and drops candidates that break it. Two answers are then chosen by voting or by PoE (summed log-probability across the views).
+
+\subsection{Adaptive compute}
+\textbf{Training budget.} Rules decide per task when to stop TTT: absolute and task-relative loss thresholds, loss plateaus, and classic early stopping on a held-out demonstration (keep the best checkpoint, stop when the held-out loss stops improving). A logistic \emph{budget predictor} uses features that cost nothing to compute (number of demonstrations, initial leave-one-out loss, and the output size implied by the demonstrations) to give likely-hopeless tasks a small budget.
+\textbf{Inference budget.} \todo{Candidates are generated in batches of 2 augmentations; generation stops once the leading candidate has $k$ votes.}
+
+\subsection{Evaluation protocol}
+We report the official ARC score (exact match, 2 attempts) on the 400 public evaluation tasks, cell accuracy and size match of the first attempt, and measured GPU-seconds per task on one NVIDIA A10G. Because every checkpoint and candidate is logged, policies are replayed offline; a policy's cost is its training time up to the stop, its signal checks, and one prediction. Policies are compared with the \emph{best} fixed budget at the same compute. To avoid selection bias, every rule is chosen on a random half of the tasks and scored on the other half (50 random splits, both directions). One task is 0.25 points; we treat differences under about 1 point as ties.
+
+% ===========================================================================
+\section{Results}
+
+\begin{table}[t]
+\centering
+\caption{ARC-AGI-1 public evaluation (400 tasks). Seconds are GPU time per task on one A10G.}
+\label{tab:main}
+\small
+\begin{tabular}{lccccc}
+\toprule
+Method & ARC score & Cell acc. & Size match & s / task \\
+\midrule
+Baseline, direct & 3.1\% & 45.5\% & 60.5\% & 15.1 \\
+Baseline + 8 views, PoE & 4.5\% & 60.2\% & 77.9\% & 23.7 \\
+TTT 32 steps, PoE & 15.5\% & 64.4\% & 77.1\% & 32.7 \\
+TTT 64 steps, PoE & 16.6\% & 65.8\% & 77.9\% & 42.1 \\
+\midrule
++ constrained decoding \& size filter & \todo{} & \todo{} & \todo{} & \todo{} \\
++ warm-start & \todo{} & \todo{} & \todo{} & \todo{} \\
+re-arc baseline + TTT 64, PoE & \todo{} & \todo{} & \todo{} & \todo{} \\
+Final: \todo{best configuration + adaptive inference (live run)} & \todo{} & \todo{} & \todo{} & \todo{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{TTT and answer selection}
+TTT raises the ARC score from 3.1\% to 16.6\% (64 steps, PoE), a $5.3\times$ gain; PoE beats voting at every budget by 1.1--3.1 points. Accuracy still rises from 32 to 64 steps. Cell accuracy and size match dip at step 8 before recovering, suggesting early TTT disrupts the model. \todo{learning-rate / warmup result (R5) and 128-step result.}
+
+\subsection{Adaptive training budgets do not beat fixed budgets}
+Chosen on all 400 tasks, the best training-budget rule (stop when the leave-one-out loss falls below 5\% of its step-0 value) scores 17.9\% (PoE) at about the 64-step compute, +1.2 points. Chosen on one half and scored on the other, the selected rule gains $+0.1$ points on average (sd 1.4; voting: $-0.7$), beating fixed budgets by more than noise in 2\% of splits. Holding one demonstration out (100-task subset), accuracy peaks at 32 steps and falls by 64; with all demonstrations the same tasks keep improving to 64 steps (19.5\% PoE), and early stopping on the held-out loss did not help (11.5\% vs.\ 17.5\% for a fixed 32 steps). A budget predictor using only free features (number of demonstrations, initial loss) is at chance (held-out AUC 0.51); adding step-0 prediction features raises it to 0.70, but those cost a full prediction, and giving predicted-hopeless tasks 8 steps instead of 64 still only ties fixed budgets ($-0.2$ points). \todo{rerun with the demonstration-implied output size logged by new runs.} \todo{Reallocation with 128-step logs (R5).}
+
+\textbf{Why.} Two effects limit any training-budget policy. First, one prediction (8 views + PoE) costs about as much as 64 training steps ($\sim$20\,s each), so even perfect stopping saves at most about 43\% per task. Second, the leave-one-out loss is a training loss: it predicts success moderately (AUC 0.58 at step 0 to 0.76 at step 64), but cannot tell a learned rule from a memorized one.
+
+\begin{figure}[t]
+\centering
+\todo{compare.png from \texttt{python -m arc\_ttt.ttt.compare}: accuracy vs.\ GPU-time for fixed budgets, adaptive training, adaptive inference, re-arc}
+\caption{Accuracy vs.\ compute. \todo{caption}}
+\label{fig:compute}
+\end{figure}
+
+\subsection{Adaptive inference}
+\todo{R4: score and inference seconds for 1/2/4/8/16 views vs.\ stop-on-agreement ($k=2,3,4$), with and without the size filter; then the live run (F1) vs.\ fixed (F2).}
+
+\subsection{Stronger base model and cheap fixes}
+\todo{R9a constrained decoding + size filter; R9b warm-start; R2/R3 re-arc; R6 1.5B. For each: score change and whether it reduces the TTT steps needed.}
+
+\subsection{Ablations and transfer}
+\todo{R7 table: attention-only vs.\ MLP-only LoRA, rank 8/32/128, no TTT augmentation, TTT from the raw base model. R8 ConceptARC per-concept scores.}
+
+% ===========================================================================
+\section{Discussion}
+\todo{(1) What the negative result means: fixed budgets are hard to beat when inference dominates and signals are training losses. (2) What did work and by how much. (3) Error analysis: which puzzle types are solved (size-preserving, recoloring) vs.\ not (counting, large outputs), with 2--3 examples. (4) Limitations: one model family, 0.5B scale, A10G timing, offline replay vs.\ live runs. (5) Future work.}
+
+\section{Conclusion}
+\todo{3--4 sentences.}
+
+\section*{Contribution statement}
+\todo{Who did what (does not count toward the page limit).}
+
+\printbibliography
+
+\end{document}

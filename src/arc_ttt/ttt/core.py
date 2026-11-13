@@ -123,6 +123,8 @@ class TestTimeTrainer:
         bs = c.get("batch_size", 1)
 
         signals, checkpoints, train_s, losses = [], [], 0.0, []
+        rule = self.parse_rule(c.get("stop_rule"))
+        stopped_at = None
         predict_at = set(c["predict_at"])
         max_steps = max(predict_at) if samples else 0
         for step in range(max_steps + 1):
@@ -136,22 +138,32 @@ class TestTimeTrainer:
                     "train_seconds": round(train_s, 2),
                     "signal_seconds": round(time.time() - t0, 3),
                 })
+            if step in predict_at and rule is not None:
+                # Live adaptive mode: decide at each checkpoint; predict only once, at the stop.
+                if rule["kind"] == "best":
+                    improved = self._track_best(rule, signals[-1], step)
+                    stop, use_best = (not improved) or step >= max_steps, True
+                else:
+                    stop, use_best = self._decide(rule, signals, step, max_steps)
+                if not stop:
+                    if step < max_steps:
+                        t0 = time.time()
+                        batch = [samples[(step * bs + j) % len(samples)] for j in range(bs)]
+                        losses.append(self._train_step(opt, scaler, batch))
+                        sched.step()
+                        train_s += time.time() - t0
+                    continue
+                pred_step = step
+                if use_best and rule.get("best_state") is not None:
+                    with torch.no_grad():
+                        for p_, b_ in zip(self.params, rule["best_state"]):
+                            p_.copy_(b_)
+                    pred_step = rule["best_step"]
+                stopped_at = step
+                checkpoints.append(self._predict_cp(task, all_demos, pred_augs, max_len, pred_step, train_s, ho, pairs))
+                break
             if step in predict_at:
-                self.model.eval()
-                t0 = time.time()
-                tests = [predict(tok, self.model, all_demos, t["input"], pred_augs, max_len,
-                                 poe=c.get("poe", True), max_candidates=c.get("poe_max_candidates", 8),
-                                 constrained=c.get("constrained_decoding", False),
-                                 size_filter=c.get("size_filter", False),
-                                 adaptive=c.get("adaptive_infer"))
-                         for t in task["test"]]
-                cp = {"step": step, "train_seconds": round(train_s, 2), "tests": tests,
-                      "predict_seconds": round(time.time() - t0, 2)}
-                if ho is not None:
-                    t1 = time.time()
-                    cp["holdout_exact"] = self._solves_holdout(pairs, ho, max_len)
-                    cp["holdout_check_seconds"] = round(time.time() - t1, 2)
-                checkpoints.append(cp)
+                checkpoints.append(self._predict_cp(task, all_demos, pred_augs, max_len, step, train_s, ho, pairs))
             if step < max_steps:
                 t0 = time.time()
                 batch = [samples[(step * bs + j) % len(samples)] for j in range(bs)]
@@ -159,7 +171,7 @@ class TestTimeTrainer:
                 sched.step()
                 train_s += time.time() - t0
 
-        return {
+        rec = {
             "task": task["id"],
             "n_pairs": len(task["train"]),
             "holdout_index": ho_index,
@@ -168,3 +180,71 @@ class TestTimeTrainer:
             "checkpoints": checkpoints,
             "targets": [t.get("output") for t in task["test"]],
         }
+        if rule is not None:
+            rec["stop_rule"] = c["stop_rule"]
+            rec["stopped_at"] = stopped_at
+            rec["predicted_at"] = checkpoints[-1]["step"]
+        return rec
+
+    def _predict_cp(self, task, all_demos, pred_augs, max_len, step, train_s, ho, pairs):
+        c, tok = self.cfg, self.tok
+        self.model.eval()
+        t0 = time.time()
+        tests = [predict(tok, self.model, all_demos, t["input"], pred_augs, max_len,
+                                 poe=c.get("poe", True), max_candidates=c.get("poe_max_candidates", 8),
+                                 constrained=c.get("constrained_decoding", False),
+                                 size_filter=c.get("size_filter", False),
+                                 adaptive=c.get("adaptive_infer"),
+                         n_samples=c.get("n_sampled_candidates", 0),
+                         temperature=c.get("sample_temperature", 0.7))
+                         for t in task["test"]]
+        cp = {"step": step, "train_seconds": round(train_s, 2), "tests": tests,
+              "predict_seconds": round(time.time() - t0, 2)}
+        if ho is not None:
+            t1 = time.time()
+            cp["holdout_exact"] = self._solves_holdout(pairs, ho, max_len)
+            cp["holdout_check_seconds"] = round(time.time() - t1, 2)
+        return cp
+
+    # ---------------------------------------------------------- live stopping rules
+    @staticmethod
+    def parse_rule(spec):
+        """'plateau:0.05' | 'rel:0.05' | 'best:loo_loss:0.0' | 'best:holdout_loss:0.05' | None"""
+        if not spec:
+            return None
+        parts = spec.split(":")
+        if parts[0] == "plateau":
+            return {"kind": "plateau", "delta": float(parts[1])}
+        if parts[0] == "rel":
+            return {"kind": "rel", "frac": float(parts[1])}
+        if parts[0] == "best":
+            return {"kind": "best", "key": parts[1], "tol": float(parts[2]) if len(parts) > 2 else 0.0}
+        raise ValueError(f"unknown stop rule {spec}")
+
+    def _decide(self, rule, signals, step, max_steps):
+        """(stop now?, predict with the best saved adapter?) at a checkpoint."""
+        if step >= max_steps:
+            return True, rule["kind"] == "best"
+        cur = signals[-1]
+        cps = [s_ for s_ in signals if s_["step"] in set(self.cfg["predict_at"]) and s_["step"] < step]
+        if rule["kind"] == "plateau":
+            if not cps or cps[-1].get("loo_loss") is None or cur.get("loo_loss") is None:
+                return False, False
+            a, b = cps[-1]["loo_loss"], cur["loo_loss"]
+            return (a > 0 and (a - b) / a < rule["delta"]), False
+        if rule["kind"] == "rel":
+            v0 = signals[0].get("loo_loss")
+            return (step > 0 and v0 and cur.get("loo_loss") is not None and cur["loo_loss"] / v0 < rule["frac"]), False
+        return False, False
+
+    def _track_best(self, rule, sig, step) -> bool:
+        """Save the adapter if this checkpoint's signal beats the best so far. Returns True if it did
+        (or if the signal is missing, so training continues to the full budget)."""
+        v = sig.get(rule["key"])
+        if v is None:
+            return True
+        if rule.get("best_val") is None or v < rule["best_val"] * (1 - rule["tol"]):
+            rule["best_val"], rule["best_step"] = v, step
+            rule["best_state"] = [p_.detach().clone() for p_ in self.params]
+            return True
+        return False

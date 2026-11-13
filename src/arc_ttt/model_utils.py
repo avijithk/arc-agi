@@ -159,7 +159,7 @@ class GridConstraint:
 
 @torch.no_grad()
 def generate_batch(tok, model, prompts: list[list[int]], max_new_tokens: int = MAX_OUTPUT_TOKENS,
-                   constrained: bool = False) -> list[str]:
+                   constrained: bool = False, temperature: float = 0.0) -> list[str]:
     """Greedy-decode several prompts at once (left-padded). Returns the generated text for each.
 
     constrained=True restricts decoding to well-formed grids (see GridConstraint).
@@ -178,7 +178,8 @@ def generate_batch(tok, model, prompts: list[list[int]], max_new_tokens: int = M
         extra["logits_processor"] = LogitsProcessorList([GridConstraint(tok, L)])
     out = model.generate(
         ids.to(model.device), attention_mask=mask.to(model.device), max_new_tokens=max_new_tokens,
-        do_sample=False, eos_token_id=tok.eos_token_id, pad_token_id=tok.pad_token_id, **extra,
+        do_sample=temperature > 0, **({"temperature": temperature, "top_k": 0, "top_p": 1.0} if temperature > 0 else {}),
+        eos_token_id=tok.eos_token_id, pad_token_id=tok.pad_token_id, **extra,
     )
     return [tok.decode(o[L:], skip_special_tokens=True) for o in out]
 

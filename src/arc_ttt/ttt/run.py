@@ -33,6 +33,9 @@ def main():
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--baseline-adapter", default=None, help="overrides config; 'none' = raw base model")
     ap.add_argument("--holdout", action="store_true", help="hold one demo pair out of TTT for the stopping signal")
+    ap.add_argument("--stop-rule", default=None,
+                    help="live adaptive stopping: plateau:0.05 | rel:0.05 | best:loo_loss[:tol] | best:holdout_loss[:tol] "
+                         "(decides at the predict_at checkpoints, predicts once)")
     ap.add_argument("--shard", type=int, default=0)
     ap.add_argument("--num-shards", type=int, default=1)
     ap.add_argument("--time-limit-hours", type=float, default=None)
@@ -42,6 +45,8 @@ def main():
     tc = dict(cfg["ttt"])
     if args.holdout:
         tc["holdout"] = True
+    if args.stop_rule:
+        tc["stop_rule"] = args.stop_rule
     out = Path(args.out_dir); out.mkdir(parents=True, exist_ok=True)
     pred_path = out / f"ttt.shard{args.shard}.jsonl"
     json.dump({"config": cfg, "ttt": tc, "args": vars(args)}, open(out / "run_config.json", "w"), indent=2)
@@ -89,7 +94,8 @@ def main():
 
 
 def hash_id(task_id: str) -> int:
-    return int(task_id, 16) % 100_000 if all(ch in "0123456789abcdef" for ch in task_id) else len(task_id)
+    import zlib
+    return int(task_id, 16) % 100_000 if all(ch in "0123456789abcdef" for ch in task_id) else zlib.crc32(task_id.encode()) % 100_000
 
 
 def load_done_ttt(path: Path) -> dict:

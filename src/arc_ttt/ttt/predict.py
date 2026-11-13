@@ -71,13 +71,13 @@ def augmented_prompt(tok, demos: list[dict], test_input: Grid, aug: Augmentation
 
 
 def generate_candidates(tok, model, demos, test_input, augs: list[Augmentation], max_len: int,
-                        constrained: bool = False) -> list[Grid | None]:
+                        constrained: bool = False, temperature: float = 0.0) -> list[Grid | None]:
     prompts, which = [], []
     for i, aug in enumerate(augs):
         p = augmented_prompt(tok, demos, test_input, aug, max_len)
         if p is not None:
             prompts.append(p); which.append(i)
-    texts = generate_batch(tok, model, prompts, constrained=constrained)
+    texts = generate_batch(tok, model, prompts, constrained=constrained, temperature=temperature)
     out: list[Grid | None] = [None] * len(augs)
     for i, text in zip(which, texts):
         g = text_to_grid(text)
@@ -155,7 +155,7 @@ def rank_from_log(rec: dict, n_augs: int | None = None, size_filter: bool = Fals
 # ---------------------------------------------------------------- main entry
 
 def predict(tok, model, demos, test_input, augs, max_len, poe=True, max_candidates=8,
-            constrained=False, size_filter=False, adaptive=None) -> dict:
+            constrained=False, size_filter=False, adaptive=None, n_samples=0, temperature=0.7) -> dict:
     """adaptive = {"batch": 2, "min_votes": 3} enables early stopping on agreement;
     None generates all augmentations in one batch."""
     rule = size_rule(demos)   # verdicts are always logged; size_filter decides whether they are applied
@@ -178,6 +178,12 @@ def predict(tok, model, demos, test_input, augs, max_len, poe=True, max_candidat
             if pool and Counter(_key(c) for c in pool).most_common(1)[0][1] >= adaptive["min_votes"]:
                 break
     used_augs = augs[:n_used]
+    if n_samples:   # optional: extra sampled candidates (one per augmentation, cycling) for more diversity
+        extra = [used_augs[i % len(used_augs)] for i in range(n_samples)]
+        cands += generate_candidates(tok, model, demos, test_input, extra, max_len, constrained, temperature)
+        used_augs = used_augs + extra
+        batch_seconds.append(round(time.time() - t0 - sum(batch_seconds), 3))
+        n_used = len(used_augs)
     t_gen = time.time() - t0
 
     uniq, index, aug_cand = [], {}, []

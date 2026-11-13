@@ -77,6 +77,18 @@ python -m arc_ttt.ttt.analyze runs/ttt-0.5b/dev     # -> analysis/analysis.md, a
 
 Step 0 is the baseline with augmentation voting / PoE and no TTT.
 
+**Every remaining run, with exact commands: [`docs/runs.md`](docs/runs.md).**
+
+## Analysis tools
+
+| Tool | What it answers |
+|---|---|
+| `python -m arc_ttt.ttt.analyze <run>` | One run: fixed budgets, adaptive rules, signal quality, inference replay (`summary.txt`) |
+| `python -m arc_ttt.ttt.compare name=<run> ...` | Several runs side by side, one combined plot (`--subset`, `--by-concept`) |
+| `python -m arc_ttt.ttt.validate <run>` | Do stopping rules survive when chosen on half the tasks and scored on the other half? |
+| `python -m arc_ttt.ttt.allocate <run>` | Per-task budget allocation from free features, cross-validated |
+| `python -m arc_ttt.ttt.run ... --stop-rule plateau:0.05` | Live adaptive run (one prediction per task, at the stop) |
+
 ## Block 1 additions (Nov 11)
 
 | Feature | How to use it |
