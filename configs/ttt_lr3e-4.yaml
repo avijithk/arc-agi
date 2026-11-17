@@ -1,5 +1,6 @@
 # R5: learning rate 3e-4
 # Generated from configs/ttt.yaml; edit that file's defaults, not this comment.
+# Uses constrained decoding + size filter (the reference setting since R9a).
 model: Qwen/Qwen2.5-0.5B
 baseline_adapter: runs/baseline-0.5b/adapter
 seed: 0
@@ -30,3 +31,5 @@ ttt:
   poe: true
   poe_max_candidates: 8
   max_seq_len: 8192
+  constrained_decoding: true
+  size_filter: true
