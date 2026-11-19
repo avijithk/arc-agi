@@ -4,7 +4,8 @@
         rearc=runs/ttt-rearc-0.5b/full baseline=runs/baseline-0.5b/eval-full \\
         --subset configs/dev_subset.txt --out results/compare
 
-Each argument is NAME=FOLDER. A folder can be a TTT run (ttt.shard*.jsonl; fixed-budget or
+Each argument is NAME=FOLDER (add @avg to the folder to use a weight-averaging run's
+averaged-weight predictions, e.g. swa=runs/ttt-rearc-0.5b/dev-swa@avg). A folder can be a TTT run (ttt.shard*.jsonl; fixed-budget or
 live adaptive) or a baseline evaluation (predictions.shard*.jsonl). --subset restricts every
 run to the same task ids, so runs on the dev subset and on all 400 can be compared fairly.
 """
@@ -63,8 +64,13 @@ def main():
     rows, curves = [], {}
     for spec in args.runs:
         name, folder = spec.split("=", 1)
+        use_avg = folder.endswith("@avg")
+        folder = folder.removesuffix("@avg")
         if list(Path(folder).glob("ttt.shard*.jsonl")):
             recs = load_runs([folder])
+            if use_avg:
+                from .wavg import avg_view
+                recs = avg_view(recs)
             if keep:
                 recs = [r for r in recs if r["task"] in keep]
             rr, cc = ttt_rows(name, recs)

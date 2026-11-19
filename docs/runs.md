@@ -1,4 +1,4 @@
-# Run guide (current as of Nov 12)
+# Run guide (current as of Nov 19)
 
 Every command runs **on an instance, inside tmux**, after:
 
@@ -36,6 +36,22 @@ Instance B first needs its own baseline (34 min, same seed as A's):
 | **R5** learning rate × warmup (dev) | `for c in lr3e-4 warmup lr3e-4_warmup; do CONFIG=configs/ttt_$c.yaml OUT=runs/ttt-0.5b/dev-$c bash scripts/run_ttt.sh; done` | 6 h | `runs/ttt-0.5b/dev-<c>` |
 | **R4** adaptive inference, 16 views logged (dev) | `CONFIG=configs/ttt_adaptive_infer.yaml OUT=runs/ttt-0.5b/dev-adaptive-infer bash scripts/run_ttt.sh` | 5 h | `runs/ttt-0.5b/dev-adaptive-infer` |
 | **R7** ablations (dev) | `bash scripts/run_ablations.sh` | 8 h | `runs/ablations/<name>` |
+
+## After Check-in 2: learned early predictor + weight averaging
+
+All three use the final setup (re-arc baseline + constrained decoding + size filter), so they need
+`runs/baseline-rearc-0.5b/adapter` (on Avi's instance).
+
+| Run | Command | Time | Output |
+|---|---|---|---|
+| **E1** early checkpoints (0,4,8,16,32,64), all 400 | `FULL=1 CONFIG=configs/ttt_early.yaml OUT=runs/ttt-rearc-0.5b/full-early bash scripts/run_ttt.sh` | ~16 h (or 2 instances: add `SHARD=0 NUM_SHARDS=2` / `SHARD=1 NUM_SHARDS=2`, ~8 h each) | `runs/ttt-rearc-0.5b/full-early` |
+| **W1** SWA weight averaging (dev) | `CONFIG=configs/ttt_swa.yaml OUT=runs/ttt-rearc-0.5b/dev-swa bash scripts/run_ttt.sh` | ~5.5 h | `runs/ttt-rearc-0.5b/dev-swa` |
+| **W2** EMA weight averaging (dev) | `CONFIG=configs/ttt_ema.yaml OUT=runs/ttt-rearc-0.5b/dev-ema bash scripts/run_ttt.sh` | ~5.5 h | `runs/ttt-rearc-0.5b/dev-ema` |
+
+Analysis (laptop):
+- `python -m arc_ttt.ttt.early <E1 folder>`: can a learned predictor tell early which puzzles will be solved, and does that save compute? (`pip install scikit-learn` adds boosted trees)
+- `python -m arc_ttt.ttt.wavg <W1 folder>`: averaged vs live weights, paired, with recovered "forgotten" puzzles
+- `python -m arc_ttt.ttt.compare live=<W1> swa=<W1>@avg`: on the accuracy-vs-compute plot
 
 ## Final runs (after Check-in 2)
 

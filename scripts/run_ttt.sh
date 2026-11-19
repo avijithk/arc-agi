@@ -4,6 +4,7 @@
 #   FULL=1 bash scripts/run_ttt.sh          # all 400 eval puzzles
 #   HOLDOUT=1 bash scripts/run_ttt.sh       # hold one demo out (stopping-signal run)
 #   CONFIG=configs/x.yaml OUT=runs/x SPLIT=conceptarc bash scripts/run_ttt.sh   # overrides
+#   SHARD=0 NUM_SHARDS=2 ...                # split one run across two instances (copy both shard files into one folder)
 # Needs runs/baseline-0.5b/adapter (from scripts/run_baseline.sh) unless the config says otherwise.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -16,6 +17,7 @@ ARGS=(--config "$CONFIG" --out-dir "$OUT")
 [ -n "${SPLIT:-}" ] && ARGS+=(--split "$SPLIT")
 [ "${FULL:-0}" = "1" ] || ARGS+=(--subset configs/dev_subset.txt)
 [ "${HOLDOUT:-0}" = "1" ] && ARGS+=(--holdout)
+[ -n "${NUM_SHARDS:-}" ] && ARGS+=(--shard "${SHARD:-0}" --num-shards "$NUM_SHARDS")
 mkdir -p "$OUT"
 
 python -m arc_ttt.ttt.run "${ARGS[@]}" 2>&1 | tee -a "$OUT/run.out"

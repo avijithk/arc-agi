@@ -13,6 +13,12 @@ For each puzzle:
   5. At each step in `predict_at` (e.g. 0, 8, 16, 32, 64), predict every test input
      (vote + product-of-experts top-2) and, in holdout mode, check whether the
      held-out pair is solved exactly.
+  6. Optional weight averaging (`weight_avg: {kind: swa, start: 32}` or
+     `{kind: ema, decay: 0.9, start: 0}`): keep a running average of the TTT adapter's
+     weights from step `start` on, and at every checkpoint after `start` also predict with
+     the averaged weights (logged under checkpoint["avg"], same format as the normal
+     predictions). The normal predictions come from the same training run, so the two are
+     a paired comparison.
 
 One run therefore yields the whole fixed-budget sweep (one point per checkpoint),
 and adaptive stopping rules can be evaluated offline from the logged signals.
@@ -122,12 +128,16 @@ class TestTimeTrainer:
         scaler = torch.amp.GradScaler("cuda", enabled=self.amp is not None)
         bs = c.get("batch_size", 1)
 
+        wa = c.get("weight_avg")
+        self._avg, self._n_avg = None, 0
         signals, checkpoints, train_s, losses = [], [], 0.0, []
         rule = self.parse_rule(c.get("stop_rule"))
         stopped_at = None
         predict_at = set(c["predict_at"])
         max_steps = max(predict_at) if samples else 0
         for step in range(max_steps + 1):
+            if wa and step >= wa.get("start", 0):
+                self._update_avg(wa)
             if step % c["signal_every"] == 0 or step in predict_at:
                 t0 = time.time()
                 signals.append({
@@ -164,6 +174,12 @@ class TestTimeTrainer:
                 break
             if step in predict_at:
                 checkpoints.append(self._predict_cp(task, all_demos, pred_augs, max_len, step, train_s, ho, pairs))
+                if wa and self._n_avg >= 2:
+                    live = self._load_avg()
+                    avg_cp = self._predict_cp(task, all_demos, pred_augs, max_len, step, train_s, ho, pairs)
+                    self._restore(live)
+                    avg_cp["n_avg"] = self._n_avg
+                    checkpoints[-1]["avg"] = avg_cp
             if step < max_steps:
                 t0 = time.time()
                 batch = [samples[(step * bs + j) % len(samples)] for j in range(bs)]
@@ -205,6 +221,37 @@ class TestTimeTrainer:
             cp["holdout_exact"] = self._solves_holdout(pairs, ho, max_len)
             cp["holdout_check_seconds"] = round(time.time() - t1, 2)
         return cp
+
+    # ---------------------------------------------------------- weight averaging
+    @torch.no_grad()
+    def _update_avg(self, wa):
+        """Fold the current adapter weights into the running average (uniform for swa,
+        exponential for ema)."""
+        if self._avg is None:
+            self._avg = [p.detach().float().clone() for p in self.params]
+            self._n_avg = 1
+            return
+        self._n_avg += 1
+        if wa.get("kind", "swa") == "ema":
+            d = wa.get("decay", 0.9)
+            for a, p in zip(self._avg, self.params):
+                a.mul_(d).add_(p.detach().float(), alpha=1 - d)
+        else:
+            for a, p in zip(self._avg, self.params):
+                a.add_(p.detach().float() - a, alpha=1.0 / self._n_avg)
+
+    @torch.no_grad()
+    def _load_avg(self):
+        """Put the averaged weights into the adapter; returns the live weights for _restore."""
+        live = [p.detach().clone() for p in self.params]
+        for a, p in zip(self._avg, self.params):
+            p.copy_(a.to(p.dtype))
+        return live
+
+    @torch.no_grad()
+    def _restore(self, live):
+        for b, p in zip(live, self.params):
+            p.copy_(b)
 
     # ---------------------------------------------------------- live stopping rules
     @staticmethod

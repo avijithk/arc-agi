@@ -1,0 +1,35 @@
+WHY ADAPTIVE COMPUTE DOESN'T SHOW ITS POTENTIAL - diagnosis (Nov 19), PoE, all 400 puzzles
+
+1. The potential is real and large (oracle bounds, python -m arc_ttt.ttt.oracle)
+   Original run: perfect "skip hopeless" = 16.6% at 26.6 s vs best fixed budget at that cost 7.1%  -> +9.5 pts
+   Re-arc run:   perfect "skip hopeless" = 25.6% at 26.2 s vs 12.9%                              -> +12.7 pts
+   Almost all of it comes from SKIPPING HOPELESS PUZZLES: 311 of 400 are never solved at any step.
+   Stopping solved puzzles early adds little; they are spread evenly over steps (first solved at 0/8/16/32/64: 19/21/14/21/14).
+
+2. Our hand-made rules aimed at the wrong target.
+   Plateau / loss-threshold / agreement rules try to detect "done". The value is in detecting "hopeless".
+   A plateaued loss looks the same for solved and hopeless puzzles, so these rules cut both.
+
+3. The step-0 signal that does exist is mostly output size, not the loss.
+   Single-signal AUC of the step-0 loss is ~0.55 in every run.
+   Adding the output size implied by the demos (+ number of demos) gives AUC 0.77-0.78 at step 0 and 0.82 at step 8.
+   Our Midway allocation result (AUC 0.51) was low partly because the original run's logs did not record output size;
+   rebuilt from the puzzle files, the same run reaches 0.77.
+
+4. Prediction is as expensive as training.
+   One prediction (8 views + PoE) ~ 21-24 s = the cost of 64 training steps (~20 s).
+   A puzzle skipped at step 0 still pays for its prediction, so skipping saves at most ~half its cost.
+
+5. The fixed-budget curve is a strong competitor.
+   Original run: 32 steps already gets 15.5% of the 16.6% at 78% of the cost. A policy must lose almost nothing
+   while skipping many puzzles to beat it.
+
+6. Result: an AUC ~0.77 predictor is roughly break-even.
+   Original run (dense checkpoints, size features rebuilt): held-out gain +0.5 pts (sd 1.5), positive in 60% of splits.
+   Re-arc run: +3.1 pts held-out, but only 0/32/64 checkpoints, so less certain.
+   How good the predictor must be (best threshold, so optimistic):
+     AUC 0.77 -> +3 | 0.85 -> +4-5 | 0.90 -> +6-7 | 0.95 -> +8-9 | 1.00 -> +10-12 pts
+
+What would unlock it: a better early predictor (AUC ~0.9), e.g. features from a cheap step-8 prediction
+(the early-checkpoint run E1 tests this), and/or cheaper predictions for puzzles predicted hopeless
+(1 view, no PoE), which raises how much skipping saves.

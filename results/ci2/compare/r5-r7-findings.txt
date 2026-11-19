@@ -1,0 +1,22 @@
+R5 + R7 findings (dev, 100 puzzles, PoE, constrained + size filter). McNemar paired exact tests.
+
+Noise: the same 64-step setting was run 3 times (dev-constrained, dev-long@64, abl-full_reference)
+  -> 23.5 / 21.5 / 19.5  (mean 21.5, spread +-2). No pair differs significantly.
+  27 puzzles solved by any replicate, 18 by all three.
+
+R5 budget: 64 -> 96 -> 128 steps = 21.5 -> 20.5 -> 20.5 (128 vs 64: +1/-2). More steps do not help.
+R5 lr/warmup:
+  lr 3e-4           14.0  (vs ref +2/-12, p=0.01)   worse
+  warmup 4 steps    19.5  (vs abl_ref +2/-2, p=1.0)  no change
+  lr 3e-4 + warmup  15.0  (vs ref +2/-11, p=0.02)   worse
+  -> keep lr 1e-4, no warmup.
+Reallocation (dev-long, hopeless tasks -> 16 steps, rest 128): predictor AUC 0.59; every threshold
+  is 2-4 points BELOW a plain fixed budget of the same compute.
+
+R7 ablations (vs abl_ref 19.5 / ref 23.5):
+  no augmentation      9.0  (+2/-13, p=0.01)  biggest single factor
+  LoRA rank 128        9.0  (+2/-13, p=0.01)  too large -> overfits
+  no baseline FT      13.5  (+4/-10, p=0.18; vs ref p=0.01)
+  attention-only LoRA 15.5  (+1/-5, p=0.22) but 28% cheaper (31 s vs 43 s)
+  MLP-only LoRA       18.5  (+3/-4, p=1.0)  ~same accuracy, 21% cheaper (34 s)
+  rank 8              17.5  (+2/-4, p=0.69) ~same
