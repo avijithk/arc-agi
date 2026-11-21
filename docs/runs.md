@@ -1,4 +1,4 @@
-# Run guide (current as of Nov 19)
+# Run guide (current as of Nov 21)
 
 Every command runs **on an instance, inside tmux**, after:
 
@@ -52,6 +52,32 @@ Analysis (laptop):
 - `python -m arc_ttt.ttt.early <E1 folder>`: can a learned predictor tell early which puzzles will be solved, and does that save compute? (`pip install scikit-learn` adds boosted trees)
 - `python -m arc_ttt.ttt.wavg <W1 folder>`: averaged vs live weights, paired, with recovered "forgotten" puzzles
 - `python -m arc_ttt.ttt.compare live=<W1> swa=<W1>@avg`: on the accuracy-vs-compute plot
+
+## Final runs on the partner's account (Nov 21 on)
+
+One script runs everything (~26 h on a g5.xlarge or g6.xlarge, ~$27) and shuts the instance down:
+
+| Step | What | Time | Output |
+|---|---|---|---|
+| Timing | answer cost with 1/2/4/8 views (no training, 30 dev puzzles) | ~40 min | `runs/timing/views<k>` |
+| **ConceptARC** | 160 unseen puzzles, re-arc + EMA, answers at 0/16/64: frozen triage test | ~10-12 h | `runs/conceptarc/final` |
+| **All 400 with EMA** | EMA on the full set + a second early-checkpoint run | ~14 h | `runs/ttt-rearc-0.5b/full-ema` |
+
+Setup on a fresh instance (same AMI as before: Deep Learning OSS Nvidia Driver AMI GPU PyTorch, Ubuntu):
+```bash
+git clone https://github.com/avijithk/arc-agi.git && cd arc-agi && bash scripts/setup_aws.sh
+mkdir -p runs/baseline-rearc-0.5b      # then copy the adapter folder in (see below)
+tmux new -s run
+bash scripts/run_final_partner.sh 2>&1 | tee -a runs/final.log
+```
+The re-arc adapter goes to `runs/baseline-rearc-0.5b/adapter/` (adapter_config.json + adapter_model.safetensors).
+Progress: `wc -l runs/timing/*/ttt.shard0.jsonl runs/conceptarc/final/ttt.shard0.jsonl runs/ttt-rearc-0.5b/full-ema/ttt.shard0.jsonl; tail -n 2 runs/final.log`
+
+Analysis (laptop):
+- `python -m arc_ttt.ttt.triage fit results/final/full-early --out results/final/triage.json` (predictor frozen on ARC eval)
+- `python -m arc_ttt.ttt.triage eval results/final/conceptarc --predictor results/final/triage.json` (unseen puzzles)
+- `python -m arc_ttt.ttt.triage eval <run>` (fit and threshold on half the puzzles, scored on the other half)
+- `python -m arc_ttt.ttt.wavg <run>` (EMA vs live weights)
 
 ## Final runs (after Check-in 2)
 

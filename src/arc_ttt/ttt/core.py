@@ -14,7 +14,8 @@ For each puzzle:
      (vote + product-of-experts top-2) and, in holdout mode, check whether the
      held-out pair is solved exactly.
   6. Optional weight averaging (`weight_avg: {kind: swa, start: 32}` or
-     `{kind: ema, decay: 0.9, start: 0}`): keep a running average of the TTT adapter's
+     `{kind: ema, decay: 0.9, start: 0}`, optional `at: [64]` to limit the averaged
+     predictions to those steps): keep a running average of the TTT adapter's
      weights from step `start` on, and at every checkpoint after `start` also predict with
      the averaged weights (logged under checkpoint["avg"], same format as the normal
      predictions). The normal predictions come from the same training run, so the two are
@@ -174,7 +175,7 @@ class TestTimeTrainer:
                 break
             if step in predict_at:
                 checkpoints.append(self._predict_cp(task, all_demos, pred_augs, max_len, step, train_s, ho, pairs))
-                if wa and self._n_avg >= 2:
+                if wa and self._n_avg >= 2 and step in set(wa.get("at", predict_at)):
                     live = self._load_avg()
                     avg_cp = self._predict_cp(task, all_demos, pred_augs, max_len, step, train_s, ho, pairs)
                     self._restore(live)

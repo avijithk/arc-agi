@@ -1,0 +1,128 @@
+EARLY PREDICTABILITY - 400 puzzles, POE, label = solved at step 64 (96 of 400)
+======================================================================================
+Fixed budgets: 0: 5.6% @ 22s  4: 7.0% @ 23s  8: 12.2% @ 24s  16: 15.9% @ 26s  32: 18.6% @ 31s  64: 23.2% @ 41s
+
+AUC for 'solved at the final step', out-of-fold, mean over repeats (0.5 = chance)
+  k          free / logistic       free / boosted        loss / logistic       loss / boosted        pred / logistic       pred / boosted 
+  0                     0.63                  0.61                  0.78                  0.77                  0.75                  0.76
+  4                     0.63                  0.61                  0.79                  0.79                  0.76                  0.79
+  8                     0.64                  0.61                  0.80                  0.81                  0.80                  0.80
+ 16                     0.63                  0.60                  0.80                  0.81                  0.78                  0.81
+ 32                     0.64                  0.62                  0.80                  0.81                  0.80                  0.82
+reference: agreement of the 8 views AT step 64 itself has AUC 0.78 (what you know only after paying for the full budget)
+
+POLICY, loss features (logistic): stop at k if p < tau, else train to 64
+  k    tau    score   s/puzzle   gain vs best fixed budget at same compute
+  0   0.05    23.2%     41.2      +0.0 pts (sd 0.0)
+  0   0.1     23.2%     40.1      +0.4 pts (sd 0.1)
+  0   0.15    22.4%     36.6      +1.3 pts (sd 0.2)
+  0   0.2     20.4%     32.2      +1.4 pts (sd 0.2)
+  0   0.3     12.2%     25.4      -2.1 pts (sd 0.3)
+  4   0.05    23.2%     41.1      +0.0 pts (sd 0.0)
+  4   0.1     23.2%     39.8      +0.6 pts (sd 0.1)
+  4   0.15    21.9%     36.0      +1.1 pts (sd 0.2)
+  4   0.2     20.3%     31.7      +1.5 pts (sd 0.3)
+  4   0.3     13.4%     26.9      -2.7 pts (sd 0.5)
+  8   0.05    23.2%     41.1      +0.0 pts (sd 0.0)
+  8   0.1     23.0%     39.1      +0.7 pts (sd 0.2)
+  8   0.15    22.2%     35.7      +1.5 pts (sd 0.2)
+  8   0.2     20.5%     32.0      +1.5 pts (sd 0.3)
+  8   0.3     15.7%     27.5      -0.8 pts (sd 0.5)
+ 16   0.05    23.4%     41.1      +0.2 pts (sd 0.1)
+ 16   0.1     23.3%     39.5      +0.8 pts (sd 0.2)
+ 16   0.15    22.5%     36.6      +1.4 pts (sd 0.2)
+ 16   0.2     21.6%     33.3      +2.1 pts (sd 0.4)
+ 16   0.3     18.0%     29.5      +0.4 pts (sd 0.5)
+ 32   0.05    23.2%     41.1      +0.0 pts (sd 0.0)
+ 32   0.1     23.2%     40.0      +0.5 pts (sd 0.1)
+ 32   0.15    22.9%     37.4      +1.4 pts (sd 0.2)
+ 32   0.2     21.7%     35.3      +1.2 pts (sd 0.3)
+ 32   0.3     20.4%     33.5      +0.7 pts (sd 0.3)
+
+POLICY, loss features (boosted trees): stop at k if p < tau, else train to 64
+  k    tau    score   s/puzzle   gain vs best fixed budget at same compute
+  0   0.05    23.0%     39.5      +0.6 pts (sd 0.2)
+  0   0.1     21.1%     34.0      +1.3 pts (sd 0.4)
+  0   0.15    19.3%     29.7      +1.6 pts (sd 0.3)
+  0   0.2     17.5%     28.2      +0.6 pts (sd 0.6)
+  0   0.3     14.3%     26.0      -0.9 pts (sd 0.4)
+  4   0.05    22.9%     39.4      +0.5 pts (sd 0.2)
+  4   0.1     21.2%     33.2      +1.7 pts (sd 0.3)
+  4   0.15    19.4%     30.1      +1.4 pts (sd 0.5)
+  4   0.2     17.3%     28.6      +0.3 pts (sd 0.5)
+  4   0.3     14.7%     27.2      -1.6 pts (sd 0.4)
+  8   0.05    22.8%     38.4      +0.9 pts (sd 0.2)
+  8   0.1     20.9%     32.4      +1.8 pts (sd 0.4)
+  8   0.15    19.5%     30.3      +1.5 pts (sd 0.6)
+  8   0.2     18.6%     29.4      +1.1 pts (sd 0.6)
+  8   0.3     17.1%     27.9      +0.4 pts (sd 0.3)
+ 16   0.05    23.2%     38.5      +1.2 pts (sd 0.2)
+ 16   0.1     21.8%     33.9      +2.0 pts (sd 0.4)
+ 16   0.15    20.7%     32.2      +1.7 pts (sd 0.3)
+ 16   0.2     20.1%     31.2      +1.5 pts (sd 0.4)
+ 16   0.3     18.7%     30.0      +0.9 pts (sd 0.7)
+ 32   0.05    23.1%     39.5      +0.6 pts (sd 0.2)
+ 32   0.1     22.4%     36.9      +1.2 pts (sd 0.4)
+ 32   0.15    21.6%     35.4      +1.1 pts (sd 0.4)
+ 32   0.2     21.0%     34.6      +0.8 pts (sd 0.3)
+ 32   0.3     20.3%     33.7      +0.6 pts (sd 0.3)
+
+POLICY, pred features (logistic): stop at k if p < tau, else train to 64  [every puzzle pays for the step-k prediction]
+  k    tau    score   s/puzzle   gain vs best fixed budget at same compute
+  0   0.05    23.2%     62.3      -0.1 pts (sd 0.1)
+  0   0.1     22.5%     57.5      -0.8 pts (sd 0.4)
+  0   0.15    21.1%     49.7      -2.2 pts (sd 0.3)
+  0   0.2     19.8%     41.6      -3.4 pts (sd 0.5)
+  0   0.3     13.6%     30.3      -4.4 pts (sd 0.3)
+  4   0.05    23.3%     61.0      +0.0 pts (sd 0.0)
+  4   0.1     22.6%     54.9      -0.6 pts (sd 0.2)
+  4   0.15    21.0%     47.1      -2.2 pts (sd 0.3)
+  4   0.2     18.6%     40.1      -4.1 pts (sd 0.5)
+  4   0.3     14.7%     32.0      -4.2 pts (sd 0.3)
+  8   0.05    23.2%     59.0      +0.0 pts (sd 0.0)
+  8   0.1     22.9%     52.9      -0.4 pts (sd 0.2)
+  8   0.15    21.3%     46.4      -1.9 pts (sd 0.3)
+  8   0.2     19.9%     41.2      -3.3 pts (sd 0.3)
+  8   0.3     17.2%     33.1      -2.3 pts (sd 0.4)
+ 16   0.05    23.4%     58.9      +0.2 pts (sd 0.1)
+ 16   0.1     22.8%     53.3      -0.5 pts (sd 0.4)
+ 16   0.15    21.8%     46.9      -1.5 pts (sd 0.2)
+ 16   0.2     20.6%     41.6      -2.7 pts (sd 0.3)
+ 16   0.3     17.8%     33.9      -2.1 pts (sd 0.5)
+ 32   0.05    23.2%     57.0      +0.0 pts (sd 0.0)
+ 32   0.1     22.8%     51.4      -0.4 pts (sd 0.3)
+ 32   0.15    22.0%     46.8      -1.3 pts (sd 0.2)
+ 32   0.2     21.4%     42.9      -1.9 pts (sd 0.2)
+ 32   0.3     19.0%     38.2      -2.8 pts (sd 0.3)
+
+POLICY, pred features (boosted trees): stop at k if p < tau, else train to 64  [every puzzle pays for the step-k prediction]
+  k    tau    score   s/puzzle   gain vs best fixed budget at same compute
+  0   0.05    23.0%     58.6      -0.3 pts (sd 0.2)
+  0   0.1     21.5%     47.2      -1.7 pts (sd 0.5)
+  0   0.15    19.2%     39.7      -3.3 pts (sd 0.8)
+  0   0.2     17.1%     34.8      -3.1 pts (sd 0.8)
+  0   0.3     13.0%     29.7      -4.7 pts (sd 0.6)
+  4   0.05    22.9%     58.0      -0.3 pts (sd 0.2)
+  4   0.1     21.0%     45.5      -2.3 pts (sd 0.4)
+  4   0.15    18.7%     39.0      -3.5 pts (sd 0.4)
+  4   0.2     16.8%     35.1      -3.6 pts (sd 0.5)
+  4   0.3     14.2%     30.9      -4.1 pts (sd 0.5)
+  8   0.05    22.6%     54.6      -0.6 pts (sd 0.2)
+  8   0.1     21.2%     43.7      -2.0 pts (sd 0.3)
+  8   0.15    19.8%     38.0      -2.0 pts (sd 0.4)
+  8   0.2     18.7%     35.1      -1.7 pts (sd 0.4)
+  8   0.3     16.9%     32.0      -2.1 pts (sd 0.5)
+ 16   0.05    22.8%     54.7      -0.4 pts (sd 0.2)
+ 16   0.1     21.4%     43.7      -1.9 pts (sd 0.4)
+ 16   0.15    20.0%     39.1      -2.3 pts (sd 0.4)
+ 16   0.2     19.2%     36.6      -1.9 pts (sd 0.6)
+ 16   0.3     17.7%     33.7      -2.0 pts (sd 0.7)
+ 32   0.05    22.7%     53.7      -0.5 pts (sd 0.2)
+ 32   0.1     21.6%     44.8      -1.7 pts (sd 0.4)
+ 32   0.15    20.8%     41.4      -2.4 pts (sd 0.4)
+ 32   0.2     20.1%     39.7      -2.4 pts (sd 0.5)
+ 32   0.3     19.1%     37.8      -2.5 pts (sd 0.3)
+
+HELD-OUT: pick the best (k, features, model, tau) on half the puzzles, score it on the other half
+  gain vs fixed budget: +0.1 pts (sd 1.7); positive in 55% of splits
+  most often picked: k=0 loss/boosted trees (3x), k=16 loss/boosted trees (3x), k=4 loss/boosted trees (2x)

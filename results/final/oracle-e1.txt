@@ -1,0 +1,13 @@
+ORACLE BOUNDS - 400 puzzles, POE
+========================================================================
+Fixed budgets: 0: 5.6% @ 21.5s  4: 7.0% @ 23.1s  8: 12.2% @ 24.0s  16: 15.9% @ 26.5s  32: 18.6% @ 31.4s  64: 23.2% @ 41.2s
+Cost per puzzle (training + one prediction):
+  step   0: train   0.0s + predict  21.5s
+  step   4: train   1.3s + predict  21.8s
+  step   8: train   2.6s + predict  21.3s
+  step  16: train   5.3s + predict  21.2s
+  step  32: train  10.5s + predict  20.9s
+  step  64: train  20.9s + predict  20.2s
+Oracle: skip hopeless         23.2% @  26.3s | best fixed budget at that cost  15.6% -> gain  +7.7 pts
+Oracle: stop at first solve   28.4% @  23.7s | best fixed budget at that cost  10.6% -> gain +17.8 pts
+First solved at step: {0: 24, 4: 16, 8: 15, 16: 21, 32: 17, 64: 26}; ever solved 119 of 400, unsolved at step 64 again: 23

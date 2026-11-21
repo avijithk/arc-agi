@@ -1,0 +1,9 @@
+TRIAGE - 400 puzzles, POE, answers at step 64; 104 solved
+====================================================================================
+fixed budgets (poe): 0: 5.6% @ 21.3s  32: 19.9% @ 31.0s  64: 25.6% @ 40.7s
+fair competitor (best fixed budget, possibly on a random subset): 17.8% @ 25.2s  25.6% @ 40.7s
+
+FROZEN predictor from /mnt/user-data/uploads/Desktop/Projects/arc-agi/results/final/full-early (400 puzzles), threshold 0.22
+  AUC on these puzzles: 0.79
+  skips 52% of puzzles -> 21.0% @ 15.8s vs fair competitor 11.1%  -> gain +9.9 pts
+  (at other thresholds: 0.04: +0.0, 0.1: +1.7, 0.16: +5.2, 0.22: +9.9, 0.28: +9.0, 0.34: +5.0, 0.4: +3.9)
